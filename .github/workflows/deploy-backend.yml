@@ -43,7 +43,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
-            sudo cp "$HOME/licensehub-bin/licensehub-web-backend" /opt/licensehub/bin/
+            sudo cp "$HOME/licensehub-bin/web/backend/target/release/licensehub-web-backend" /opt/licensehub/bin/
             sudo chmod +x /opt/licensehub/bin/licensehub-web-backend
             sudo systemctl restart licensehub-web
             sleep 2
