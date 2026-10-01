@@ -322,10 +322,18 @@ FFI 원칙:
 2. C ABI
 3. C/C++ 헤더
 4. C# P/Invoke Wrapper
-5. Python `cffi` Wrapper
+5. Python Wrapper
 6. Java/Kotlin JNI 또는 JNA Wrapper
 7. Go cgo Wrapper
 8. Swift 및 WebAssembly 지원
+
+구현 현황:
+
+- 완료: Rust(`verify`), C ABI(`lh_verify_certificate`), C/C++ 헤더,
+  C#, Python, Node.js — `bindings/` 참고
+- 계획: Java/Kotlin, Go, Swift, WebAssembly
+
+Node.js는 `koffi` FFI를 통해 동일한 C ABI를 호출한다.
 
 ## 10. 보안 요구사항
 

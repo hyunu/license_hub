@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "certificate_id": "YCBwsxg3o2MjJZ2g",
+  "license_id": "fixture-l1",
+  "level": 1,
+  "product": "Tampered",
+  "version": "1.2.0",
+  "issued_at": "2026-01-01T00:00:00Z",
+  "expires_at": "2027-01-01T00:00:00Z",
+  "issuer": "LicenseHub",
+  "metadata": {},
+  "children": [],
+  "signature_algorithm": "Ed25519",
+  "key_id": "fixture-key",
+  "signature": "z8IBv_h97o3PjULOkAlqpQapq-Ib8RiDb57WIskx_G5Oe-iXk-zJT77cflXUhNcA2WbypzFLkyitP5ohLqr9CQ"
+}

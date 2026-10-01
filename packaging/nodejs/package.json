@@ -1,0 +1,15 @@
+{
+  "name": "licensehub-node",
+  "version": "0.1.0",
+  "description": "LicenseGuard Node.js verification binding for licensehub-core",
+  "main": "licenseguard.js",
+  "files": [
+    "licenseguard.js",
+    "native/",
+    "README.md"
+  ],
+  "dependencies": {
+    "koffi": "^2.9.1"
+  },
+  "license": "MIT"
+}

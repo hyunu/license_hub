@@ -6,6 +6,10 @@
 
 /* Returns 0 when verification was processed, -1 for invalid arguments, or
  * -2 for malformed input. The verification result is written to result_code. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int32_t lh_verify_certificate(
     const uint8_t *certificate,
     size_t certificate_len,
@@ -15,6 +19,10 @@ int32_t lh_verify_certificate(
     size_t context_len,
     uint32_t *result_code
 );
+
+#ifdef __cplusplus
+}
+#endif
 
 enum lh_verification_code {
     LH_VALID = 0,

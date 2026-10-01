@@ -28,6 +28,12 @@ const CURRENT_SCHEMA_VERSION: u32 = 1;
 // 현재는 Ed25519만 지원하며, 알고리즘 추가 시 명시적인 구현과 테스트가 필요하다.
 const ALGORITHM: &str = "Ed25519";
 
+// FFI 경계에서 받아들이는 인증서·검증 Context의 최대 크기. 발급 정상 인증서
+// (Metadata와 하위 인증서 포함)는 이 크기를 넘지 않는다. 제한을 두지 않으면
+// 공격자가 거대한 JSON을 전달해 호출 프로세스의 메모리를 고갈시킬 수 있다.
+const MAX_CERTIFICATE_SIZE: usize = 64 * 1024;
+const MAX_CONTEXT_SIZE: usize = 16 * 1024;
+
 /// LicenseHub가 발급하는 서명된 인증서.
 ///
 /// `signature`를 제외한 모든 필드는 canonicalization된 뒤 서명된다.
@@ -113,10 +119,18 @@ pub struct CertificateRequest {
 }
 
 impl CertificateRequest {
-    /// License, 등급, 제품, 버전으로 발급 요청을 생성한다.
-    ///
-    /// 날짜 기본값은 테스트와 예제용이다. 운영 발급자는 `issued_at`과
-    /// `expires_at`을 명시적으로 설정해야 한다.
+    //--------------------------------------------------------------------------------
+    // 발급 요청을 생성한다.
+    //
+    // 인증서 발급에 필요한 최소 정보(라이선스 ID, 등급, 제품, 버전)로 요청을
+    // 만든다. 날짜 기본값은 테스트·예제용이므로 운영 발급자는 issued_at과
+    // expires_at을 반드시 명시해야 한다.
+    // - 인자: license_id: 라이선스 식별자
+    //         level: 인증서 등급 (1=Offline, 2=Secure, 3=Device-Bound)
+    //         product: 제품 식별자
+    //         version: 제품 버전
+    // - 리턴: CertificateRequest 빌더 인스턴스
+    //--------------------------------------------------------------------------------
     pub fn new(
         license_id: impl Into<String>,
         level: u8,
@@ -137,41 +151,68 @@ impl CertificateRequest {
         }
     }
 
-    /// 발급 시각을 설정한다.
+    //--------------------------------------------------------------------------------
+    // 발급 시각을 설정한다.
+    // - 인자: value: RFC 3339 UTC 형식의 발급 시각
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn issued_at(mut self, value: impl Into<String>) -> Self {
         self.issued_at = value.into();
         self
     }
 
-    /// 만료 시각을 설정한다.
+    //--------------------------------------------------------------------------------
+    // 만료 시각을 설정한다.
+    // - 인자: value: RFC 3339 UTC 형식의 만료 시각
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn expires_at(mut self, value: impl Into<String>) -> Self {
         self.expires_at = value.into();
         self
     }
 
-    /// L2/L3 서버 검증 URL을 설정한다.
+    //--------------------------------------------------------------------------------
+    // L2/L3 서버 검증 URL을 설정한다.
+    // - 인자: value: 검증 서버의 HTTPS URL
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn verification_url(mut self, value: impl Into<String>) -> Self {
         self.verification_url = Some(value.into());
         self
     }
 
-    /// L3에 사용할 원본 Device ID를 설정한다.
-    ///
-    /// 원본 값은 인증서에 저장되지 않고 SHA-256 해시만 저장된다.
+    //--------------------------------------------------------------------------------
+    // L3에 사용할 원본 Device ID를 설정한다.
+    //
+    // 원본 값은 인증서에 저장되지 않고 SHA-256 해시만 기록된다.
+    // - 인자: value: 장치 식별을 위한 원본 ID
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn device_id(mut self, value: impl Into<String>) -> Self {
         self.device_id = Some(value.into());
         self
     }
 
-    /// 임의의 JSON Metadata를 추가한다.
-    ///
-    /// 모든 Metadata는 인증서 서명 전에 포함되므로 발급 후 변경할 수 없다.
+    //--------------------------------------------------------------------------------
+    // 임의의 JSON Metadata를 추가한다.
+    //
+    // 모든 Metadata는 서명 대상에 포함되므로 발급 후 값·순서를 변경하면
+    // 서명 검증에 실패한다. Private Key, Token, 원본 Hardware ID 같은
+    // 민감정보는 포함하지 않는다.
+    // - 인자: key: Metadata 키
+    //         value: 임의의 JSON 값
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn metadata(mut self, key: impl Into<String>, value: Value) -> Self {
         self.metadata.insert(key.into(), value);
         self
     }
 
-    /// 중첩 인증서를 설정한다.
+    //--------------------------------------------------------------------------------
+    // 중첩 인증서(하위 인증서)를 설정한다.
+    // - 인자: children: 하위 인증서 목록
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn children(mut self, children: Vec<Certificate>) -> Self {
         self.children = children;
         self
@@ -184,12 +225,19 @@ impl CertificateRequest {
 /// 에서만 사용해야 한다. Client SDK나 배포 대상 응용 프로그램에는
 /// `Issuer`를 포함하지 않고 공개키 검증 기능만 포함해야 한다.
 pub struct Issuer {
+    // ed25519-dalek은 zeroize feature 활성 시 SigningKey의 secret_key를
+    // Drop 시점에 0으로 덮어쓴다(ZeroizeOnDrop). 따라서 Issuer가 해제되면
+    // 개인키가 메모리에서 소멸된다.
     signing_key: SigningKey,
     key_id: String,
 }
 
 impl Issuer {
-    /// 운영체제 CSPRNG로 새 Ed25519 키를 생성한다.
+    //--------------------------------------------------------------------------------
+    // 운영체제 CSPRNG로 새 Ed25519 키를 생성하여 발급자를 만든다.
+    // - 인자: key_id: 서명 키 버전 식별자 (Public Key 선택·회전에 사용)
+    // - 리턴: Issuer 인스턴스
+    //--------------------------------------------------------------------------------
     pub fn generate(key_id: impl Into<String>) -> Self {
         Self {
             signing_key: SigningKey::generate(&mut OsRng),
@@ -197,9 +245,14 @@ impl Issuer {
         }
     }
 
-    /// 외부에서 안전하게 로드된 32바이트 개인키로 발급자를 생성한다.
-    ///
-    /// 키 파일 복호화, Secret 조회, 키 저장은 이 함수에서 수행하지 않는다.
+    //--------------------------------------------------------------------------------
+    // 외부에서 안전하게 로드한 개인키로 발급자를 만든다.
+    //
+    // 키 파일 복호화와 Secret 조회는 이 함수의 책임이 아니다.
+    // - 인자: key_id: 서명 키 버전 식별자
+    //         bytes: Ed25519 개인키 32바이트
+    // - 리턴: Issuer 인스턴스
+    //--------------------------------------------------------------------------------
     pub fn from_bytes(key_id: impl Into<String>, bytes: &[u8; 32]) -> Self {
         Self {
             signing_key: SigningKey::from_bytes(bytes),
@@ -207,16 +260,23 @@ impl Issuer {
         }
     }
 
-    /// Client에 배포할 공개 검증키를 반환한다.
+    //--------------------------------------------------------------------------------
+    // 배포 대상 응용 SW에 내장할 검증용 공개키를 반환한다.
+    // - 인자: 없음
+    // - 리턴: Ed25519 VerifyingKey
+    //--------------------------------------------------------------------------------
     pub fn verifying_key(&self) -> VerifyingKey {
         self.signing_key.verifying_key()
     }
 
-    /// 요청을 검증하고 인증서를 생성한 뒤 서명한다.
-    ///
-    /// 처리 순서는 `요청 정책 검증 -> 인증서 조립 -> canonicalization ->
-    /// Ed25519 서명`이다. 서명 필드는 빈 상태로 payload를 만든 뒤 서명하고,
-    /// 결과를 마지막에 인증서에 기록한다.
+    //--------------------------------------------------------------------------------
+    // 요청을 검증하고 인증서를 생성한 뒤 서명한다.
+    //
+    // 순서: 요청 정책 검증 -> 인증서 조립 -> canonicalization -> Ed25519 서명.
+    // 서명 필드는 빈 상태로 payload를 만들고, 결과를 마지막에 기록한다.
+    // - 인자: request: 발급 요청 빌더
+    // - 리턴: Ok(서명된 인증서) 또는 Err(IssueError)
+    //--------------------------------------------------------------------------------
     pub fn issue(&self, request: CertificateRequest) -> Result<Certificate, IssueError> {
         validate_request(&request)?;
         let mut certificate = Certificate {
@@ -289,6 +349,13 @@ pub struct VerificationContext {
     pub max_chain_depth: usize,
 }
 
+//--------------------------------------------------------------------------------
+// 기본 검증 Context를 생성한다.
+//
+// 기본 시각은 예제·테스트용이며, 운영 검증기는 현재 시각을 명시해야 한다.
+// - 인자: 없음
+// - 리턴: VerificationContext 인스턴스
+//--------------------------------------------------------------------------------
 impl Default for VerificationContext {
     fn default() -> Self {
         Self {
@@ -305,39 +372,67 @@ impl Default for VerificationContext {
 }
 
 impl VerificationContext {
-    /// 지정한 시각을 기준으로 기본 검증 Context를 만든다.
+    //--------------------------------------------------------------------------------
+    // 지정한 시각을 기준으로 기본 검증 Context를 만든다.
+    // - 인자: value: 검증 기준 시각 (RFC 3339 UTC)
+    // - 리턴: VerificationContext 인스턴스
+    //--------------------------------------------------------------------------------
     pub fn at(value: impl Into<String>) -> Self {
         Self {
             now: value.into(),
             ..Self::default()
         }
     }
-    /// 서버 검증 결과를 설정한다.
+    //--------------------------------------------------------------------------------
+    // L2/L3 서버 검증 결과를 설정한다.
+    // - 인자: status: 서버 승인(Approved) 또는 거부(Rejected) 상태
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn server(mut self, status: ServerStatus) -> Self {
         self.server_status = Some(status);
         self
     }
-    /// 현재 장치 ID를 설정한다.
+    //--------------------------------------------------------------------------------
+    // 현재 장치의 원본 ID를 설정한다. L3 검증에서 해시 비교에 사용된다.
+    // - 인자: value: 현재 장치 식별을 위한 원본 ID
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn device_id(mut self, value: impl Into<String>) -> Self {
         self.device_id = Some(value.into());
         self
     }
-    /// 제품 정책을 설정한다.
+    //--------------------------------------------------------------------------------
+    // 제품 정책을 설정한다. 설정되면 인증서 제품과 일치해야 한다.
+    // - 인자: value: 기대하는 제품 식별자
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn product(mut self, value: impl Into<String>) -> Self {
         self.product = Some(value.into());
         self
     }
-    /// 버전 정책을 설정한다.
+    //--------------------------------------------------------------------------------
+    // 버전 정책을 설정한다. 설정되면 인증서 버전과 일치해야 한다.
+    // - 인자: value: 기대하는 제품 버전
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn version(mut self, value: impl Into<String>) -> Self {
         self.version = Some(value.into());
         self
     }
-    /// Blacklist 상태를 설정한다.
+    //--------------------------------------------------------------------------------
+    // 라이선스가 Blacklist에 포함되었음을 설정한다.
+    // - 인자: 없음
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn blacklisted(mut self) -> Self {
         self.blacklisted = true;
         self
     }
-    /// Revocation 상태를 설정한다.
+    //--------------------------------------------------------------------------------
+    // 라이선스 또는 인증서가 폐기되었음을 설정한다.
+    // - 인자: 없음
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
     pub fn revoked(mut self) -> Self {
         self.revoked = true;
         self
@@ -383,19 +478,18 @@ pub enum VerificationError {
     PolicyRejected,
 }
 
-/// 인증서 전체를 검증한다.
-///
-/// 검증은 다음 순서로 수행된다.
-///
-/// 1. 체인 깊이와 Schema 버전 확인
-/// 2. 서명 알고리즘 및 Ed25519 서명 확인
-/// 3. 발급일·만료일 및 제품 정책 확인
-/// 4. 등급별 서버 상태와 Device Binding 확인
-/// 5. Revocation·Blacklist 확인
-/// 6. 모든 하위 인증서 재귀 검증
-///
-/// 하나라도 실패하면 `Err`를 반환한다. 호출자는 성공한 경우에만 응용
-/// 프로그램의 핵심 기능을 활성화해야 한다.
+//--------------------------------------------------------------------------------
+// 인증서 전체를 검증한다.
+//
+// 순서: 체인 깊이·Schema -> 서명 알고리즘·서명 -> 발급일·만료일·제품 ->
+// 등급별 서버·Device -> Revocation·Blacklist -> 하위 인증서 재귀 검증.
+// 하나라도 실패하면 Err를 반환하며, 호출자는 성공한 경우에만 응용 SW의
+// 핵심 기능을 활성화해야 한다.
+// - 인자: certificate: 검증할 인증서
+//         public_key: 검증용 공개키
+//         context: 서버 상태, Device, 정책 등 검증 환경
+// - 리턴: Ok(()) 또는 Err(VerificationError)
+//--------------------------------------------------------------------------------
 pub fn verify(
     certificate: &Certificate,
     public_key: &VerifyingKey,
@@ -404,6 +498,17 @@ pub fn verify(
     verify_at_depth(certificate, public_key, context, 0)
 }
 
+//--------------------------------------------------------------------------------
+// 체인 깊이를 추적하며 인증서를 재귀 검증한다.
+//
+// depth가 max_chain_depth를 초과하면 ChainTooDeep으로 거부해 매우 깊은
+// 입력으로 인한 스택·CPU 고갈을 방지한다.
+// - 인자: certificate: 검증할 인증서
+//         public_key: 검증용 공개키
+//         context: 검증 환경
+//         depth: 현재 체인 깊이 (루트는 0)
+// - 리턴: Ok(()) 또는 Err(VerificationError)
+//--------------------------------------------------------------------------------
 fn verify_at_depth(
     certificate: &Certificate,
     public_key: &VerifyingKey,
@@ -510,6 +615,11 @@ fn verify_at_depth(
     Ok(())
 }
 
+//--------------------------------------------------------------------------------
+// L2/L3의 서버 검증 상태를 확인한다.
+// - 인자: context: 서버 상태가 포함된 검증 환경
+// - 리턴: Ok(()) 또는 Err(ServerRequired/ServerRejected)
+//--------------------------------------------------------------------------------
 fn check_server(context: &VerificationContext) -> Result<(), VerificationError> {
     match context.server_status {
         None => Err(VerificationError::ServerRequired),
@@ -518,6 +628,13 @@ fn check_server(context: &VerificationContext) -> Result<(), VerificationError> 
     }
 }
 
+//--------------------------------------------------------------------------------
+// 발급 요청의 등급·필수 필드 조합을 서명 전에 검증한다.
+//
+// 잘못된 조합은 서명 후 되돌릴 수 없으므로 Fail-Closed로 처리한다.
+// - 인자: request: 발급 요청
+// - 리턴: Ok(()) 또는 Err(IssueError::InvalidRequest)
+//--------------------------------------------------------------------------------
 fn validate_request(request: &CertificateRequest) -> Result<(), IssueError> {
     // 잘못된 조합을 서명하기 전에 차단한다. 서명된 뒤에는 잘못된 정책을
     // 단순 데이터 오류로 되돌릴 수 없으므로 발급 단계에서 Fail-Closed한다.
@@ -554,6 +671,15 @@ fn validate_request(request: &CertificateRequest) -> Result<(), IssueError> {
     Ok(())
 }
 
+//--------------------------------------------------------------------------------
+// 서명 대상 canonical payload를 생성한다.
+//
+// signature 필드를 제외한 인증서를 Value로 변환하고 객체 키를 정렬한
+// 바이트열을 만든다. 발급자와 검증자가 같은 규칙을 쓰므로 필드 순서와
+// 공백 차이는 서명 결과에 영향을 주지 않는다.
+// - 인자: certificate: 서명할 인증서
+// - 리턴: Ok(canonical 바이트열) 또는 Err(직렬화 오류 메시지)
+//--------------------------------------------------------------------------------
 fn signing_payload(certificate: &Certificate) -> Result<Vec<u8>, String> {
     // 서명 필드는 자기 자신을 서명할 수 없으므로 payload에서 제외한다.
     // 나머지 필드는 Value로 변환한 뒤 재귀적으로 정렬한다.
@@ -566,6 +692,15 @@ fn signing_payload(certificate: &Certificate) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
+//--------------------------------------------------------------------------------
+// JSON Value를 재귀적으로 canonical 직렬화한다.
+//
+// 객체 키는 BTreeMap으로 정렬하고 배열 순서는 유지한다. 이 규칙은 언어별
+// 구현 간 동일 바이트열 생성을 위한 호환성 계약이다.
+// - 인자: value: 직렬화할 JSON 값
+//         output: 결과를 쌓을 출력 버퍼
+// - 리턴: Ok(()) 또는 Err(직렬화 오류 메시지)
+//--------------------------------------------------------------------------------
 fn write_canonical(value: &Value, output: &mut Vec<u8>) -> Result<(), String> {
     // 객체 키 순서를 BTreeMap으로 정렬하고 배열 순서는 유지한다. 이 규칙은
     // 발급자와 검증자가 서로 다른 언어로 구현되어도 같은 바이트열을 만들기
@@ -601,18 +736,29 @@ fn write_canonical(value: &Value, output: &mut Vec<u8>) -> Result<(), String> {
     Ok(())
 }
 
-/// RFC 3339 시간만 허용하여 날짜 비교 기준을 하나로 통일한다.
+//--------------------------------------------------------------------------------
+// RFC 3339 형식의 시간 문자열을 파싱한다.
+// - 인자: value: RFC 3339 UTC 시간 문자열
+// - 리턴: Option<OffsetDateTime> (형식이 틀리면 None)
+//--------------------------------------------------------------------------------
 fn parse_time(value: &str) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(value, &Rfc3339).ok()
 }
-/// 원본 Device ID를 인증서에 저장하지 않기 위한 파생값을 만든다.
-///
-/// 해시만으로도 동일 장치 비교는 가능하지만, Hardware ID 자체가 민감한
-/// 정보일 수 있으므로 호출자는 입력값과 Metadata를 별도로 보호해야 한다.
+//--------------------------------------------------------------------------------
+// 원본 Device ID의 SHA-256 해시를 URL-safe Base64로 생성한다.
+//
+// 원문이 인증서에 저장되지 않도록 하며, 민감한 Hardware ID 정보도 보호된다.
+// - 인자: value: 원본 Device ID
+// - 리턴: URL-safe Base64 해시 문자열
+//--------------------------------------------------------------------------------
 fn hash_device_id(value: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(value.as_bytes()))
 }
-/// 운영체제 난수원으로 인증서 식별자를 생성한다.
+//--------------------------------------------------------------------------------
+// 운영체제 난수원으로 인증서 식별자를 생성한다.
+// - 인자: 없음
+// - 리턴: URL-safe Base64 식별자 문자열
+//--------------------------------------------------------------------------------
 fn random_id() -> String {
     let mut bytes = [0u8; 12];
     getrandom::fill(&mut bytes).expect("operating system random source unavailable");
@@ -636,7 +782,11 @@ struct FfiVerificationContext {
 }
 
 impl FfiVerificationContext {
-    /// FFI용 평면 JSON을 내부 검증 Context로 변환한다.
+    //--------------------------------------------------------------------------------
+    // FFI용 평면 JSON Context를 내부 검증 Context로 변환한다.
+    // - 인자: self: 역직렬화된 FFI Context
+    // - 리턴: VerificationContext 인스턴스
+    //--------------------------------------------------------------------------------
     fn into_context(self) -> VerificationContext {
         let server_status = match self.server_status.as_deref() {
             Some("approved") => Some(ServerStatus::Approved),
@@ -658,16 +808,26 @@ impl FfiVerificationContext {
     }
 }
 
-/// JSON 인증서를 C ABI를 통해 검증한다.
-///
-/// 반환값 `0`은 요청이 처리되었다는 의미이고, 실제 인증 결과는
-/// `result_code`에 기록된다. `-1`은 포인터·길이 오류, `-2`는 JSON 또는
-/// 공개키 파싱 오류다. 인증서가 유효하지 않은 경우에도 함수 호출 자체는
-/// 성공했으므로 반환값은 `0`, `result_code`는 유효하지 않은 코드가 된다.
-///
-/// # Safety
-/// All non-null pointers must reference readable buffers of the supplied
-/// lengths. `result_code` must reference writable memory for one `u32`.
+//--------------------------------------------------------------------------------
+// JSON 인증서를 C ABI를 통해 검증한다.
+//
+// 반환값 0은 요청이 처리되었음을 의미하고, 실제 인증 결과는 result_code에
+// 기록된다. -1은 포인터·길이 오류, -2는 JSON/공개키 파싱 오류다. 인증서가
+// 유효하지 않아도 호출 자체는 성공(0)이며 result_code에 실패 코드가 담긴다.
+//
+// # Safety: 모든 비-NULL 포인터는 전달된 길이만큼 유효한 읽기 버퍼를
+// 가리켜야 하고, result_code는 u32 하나를 쓸 수 있는 메모리를 가리켜야 한다.
+// - 인자: certificate: 인증서 JSON 바이트 포인터
+//         certificate_len: 인증서 버퍼 길이
+//         public_key: Ed25519 공개키 32바이트 포인터
+//         public_key_len: 공개키 길이 (32)
+//         context: 검증 Context JSON 포인터 (비어 있으면 기본값)
+//         context_len: Context 버퍼 길이
+//         result_code: 검증 결과 코드를 기록할 출력 포인터
+// - 리턴: 0 처리 성공 / -1 인자 오류 / -2 입력 파싱 오류
+//--------------------------------------------------------------------------------
+// 안전 조건은 위 배너 주석의 # Safety 단락에 문서화되어 있다.
+#[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lh_verify_certificate(
     certificate: *const u8,
@@ -686,6 +846,8 @@ pub unsafe extern "C" fn lh_verify_certificate(
         || public_key.is_null()
         || (context_len > 0 && context.is_null())
         || public_key_len != 32
+        || certificate_len > MAX_CERTIFICATE_SIZE
+        || context_len > MAX_CONTEXT_SIZE
     {
         return -1;
     }
@@ -723,6 +885,14 @@ pub unsafe extern "C" fn lh_verify_certificate(
     }
 }
 
+//--------------------------------------------------------------------------------
+// 검증 결과를 안정적인 정수 코드로 변환한다.
+//
+// C, C#, Python 등 외부 호출자가 언어별 예외 문자열에 의존하지 않도록
+// 코드를 고정하며, include/licensehub_core.h의 enum과 일치해야 한다.
+// - 인자: result: verify()의 검증 결과
+// - 리턴: u32 코드 (0=유효, 1~15=실패 사유)
+//--------------------------------------------------------------------------------
 fn verification_code(result: Result<(), VerificationError>) -> u32 {
     // C, C#, Python 등의 호출자가 언어별 예외 문자열에 의존하지 않도록
     // 검증 결과를 안정적인 정수 코드로 변환한다. 이 값은 헤더 파일의
@@ -916,6 +1086,39 @@ mod tests {
                 0,
                 std::ptr::null(),
                 0,
+                &mut result,
+            )
+        };
+        assert_eq!(status, -1);
+    }
+
+    #[test]
+    fn c_abi_rejects_oversized_inputs() {
+        let mut result = u32::MAX;
+        let large = vec![0u8; 70_000];
+        let context = br#"{"now":"2026-06-01T00:00:00Z","max_chain_depth":3}"#;
+
+        let status = unsafe {
+            lh_verify_certificate(
+                large.as_ptr(),
+                MAX_CERTIFICATE_SIZE + 1,
+                large.as_ptr(),
+                32,
+                context.as_ptr(),
+                context.len(),
+                &mut result,
+            )
+        };
+        assert_eq!(status, -1);
+
+        let status = unsafe {
+            lh_verify_certificate(
+                large.as_ptr(),
+                4,
+                large.as_ptr(),
+                32,
+                large.as_ptr(),
+                MAX_CONTEXT_SIZE + 1,
                 &mut result,
             )
         };

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "certificate_id": "-yEpeF3xahYXkuQY",
+  "license_id": "fixture-l2",
+  "level": 2,
+  "product": "DXi",
+  "version": "1.2.0",
+  "issued_at": "2026-01-01T00:00:00Z",
+  "expires_at": "2027-01-01T00:00:00Z",
+  "issuer": "LicenseHub",
+  "server": {
+    "verification_url": "https://license.example.com/v1/verify"
+  },
+  "metadata": {},
+  "children": [],
+  "signature_algorithm": "Ed25519",
+  "key_id": "fixture-key",
+  "signature": "7aoUS5XZaDNsiLYmR03Cqlsa3WdZF9g0T94aRXS3o3MP9EYFm6kbVwdLL1HcXC1H6SfLm3bRLNpe0AvebEP2DA"
+}

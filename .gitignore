@@ -1,2 +1,20 @@
 **/target/
 /core/dist/
+
+# 언어별 바인딩 빌드 산출물
+**/node_modules/
+**/__pycache__/
+bindings/csharp/bin/
+bindings/csharp/obj/
+bindings/c/verify_all
+bindings/cpp/verify_all
+
+# 배포 패키징 생성 산출물
+/distribute/
+packaging/csharp/bin/
+packaging/csharp/obj/
+packaging/csharp/runtimes/
+packaging/python/build/
+packaging/python/dist/
+packaging/python/src/*.egg-info/
+packaging/python/src/licensehub_licenseguard/native/
