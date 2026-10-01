@@ -57,3 +57,9 @@ jobs:
             sudo cp "$HOME/licensehub-setup/web/deploy/ssh/bootstrap.sh" /opt/licensehub/bootstrap.sh
             sudo bash /opt/licensehub/bootstrap.sh "${PROXY_DOMAIN}"
             echo "PROVISION OK"
+        env:
+          LICENSEHUB_SIGNING_KEY: ${{ secrets.LICENSEHUB_SIGNING_KEY }}
+          LICENSEHUB_VERIFY_URL: ${{ secrets.LICENSEHUB_VERIFY_URL }}
+          LICENSEHUB_ADMIN_USER: ${{ secrets.LICENSEHUB_ADMIN_USER }}
+          LICENSEHUB_ADMIN_PASSWORD: ${{ secrets.LICENSEHUB_ADMIN_PASSWORD }}
+          PROXY_DOMAIN: ${{ secrets.PROXY_DOMAIN }}
