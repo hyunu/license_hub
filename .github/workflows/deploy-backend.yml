@@ -3,6 +3,9 @@ name: Deploy Backend to Oracle
 # SSH로 Oracle 인스턴스에 백엔드를 자동 배포한다.
 # - 수동: Actions 탭 → Deploy Backend to Oracle → Run workflow
 # - 자동: main 브랜치에서 core/ 또는 web/backend/ 변경 push 시
+#
+# 인스턴스 CPU 아키텍처를 감지해 aarch64/x86_64 musl 정적 바이너리를
+# 빌드한다. musl 정적 바이너리는 glibc 버전·배포판 차이와 무관하게 실행된다.
 
 on:
   workflow_dispatch:
@@ -20,14 +23,46 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-musl
+          targets: x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
 
-      - name: Install musl toolchain
-        run: sudo apt-get update -y && sudo apt-get install -y musl-tools
+      - name: Detect instance architecture
+        id: arch
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          echo "$SSH_KEY" > /tmp/lh_key
+          chmod 600 /tmp/lh_key
+          ARCH=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -i /tmp/lh_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "uname -m")
+          echo "arch=${ARCH}" >> "$GITHUB_OUTPUT"
+          echo "Detected instance arch: ${ARCH}"
+          rm -f /tmp/lh_key
 
-      - name: Build backend (release, musl static)
-        run: cargo build --release --target x86_64-unknown-linux-musl
+      - name: Install musl toolchains
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y musl-tools
+          curl -fsSL https://musl.cc/aarch64-linux-musl-cross.tgz -o /tmp/musl.tgz
+          tar -xzf /tmp/musl.tgz -C /tmp
+          echo "/tmp/aarch64-linux-musl-cross/bin" >> "$GITHUB_PATH"
+
+      - name: Build backend (musl static)
+        run: |
+          if [ "${ARCH}" = "aarch64" ] || [ "${ARCH}" = "arm64" ]; then
+            echo "==> building aarch64-unknown-linux-musl"
+            cargo build --release --target aarch64-unknown-linux-musl
+          else
+            echo "==> building x86_64-unknown-linux-musl"
+            cargo build --release --target x86_64-unknown-linux-musl
+          fi
         working-directory: web/backend
+        env:
+          ARCH: ${{ steps.arch.outputs.arch }}
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CC_aarch64_unknown_linux_musl: aarch64-linux-musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-gcc
 
       - name: Upload binary over SSH
         uses: appleboy/scp-action@v0.1.7
@@ -36,7 +71,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: web/backend/target/x86_64-unknown-linux-musl/release/licensehub-web-backend
+          source: web/backend/target/${{ steps.arch.outputs.arch }}-unknown-linux-musl/release/licensehub-web-backend
           target: ~/licensehub-bin
 
       - name: Restart service over SSH
@@ -48,7 +83,13 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
-            sudo cp "$HOME/licensehub-bin/web/backend/target/x86_64-unknown-linux-musl/release/licensehub-web-backend" /opt/licensehub/bin/
+            ARCH=$(uname -m)
+            case "$ARCH" in
+              aarch64|arm64) TARGET=aarch64-unknown-linux-musl ;;
+              *) TARGET=x86_64-unknown-linux-musl ;;
+            esac
+            echo "installing binary for arch: ${ARCH} (${TARGET})"
+            sudo cp "$HOME/licensehub-bin/web/backend/target/${TARGET}/release/licensehub-web-backend" /opt/licensehub/bin/
             sudo chmod +x /opt/licensehub/bin/licensehub-web-backend
             sudo systemctl restart licensehub-web
             sleep 3
