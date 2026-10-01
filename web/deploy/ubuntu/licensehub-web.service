@@ -1,0 +1,15 @@
+[Unit]
+Description=LicenseHub Web Backend
+After=network.target tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+WorkingDirectory=/opt/licensehub
+EnvironmentFile=/opt/licensehub/.env
+ExecStart=/opt/licensehub/bin/licensehub-web-backend
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

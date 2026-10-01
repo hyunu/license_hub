@@ -1,0 +1,50 @@
+name: Deploy Backend to Oracle
+
+# SSH로 Oracle 인스턴스에 백엔드를 자동 배포한다.
+# - 수동: Actions 탭 → Deploy Backend to Oracle → Run workflow
+# - 자동: main 브랜치에서 core/ 또는 web/backend/ 변경 push 시
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'web/backend/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build backend (release)
+        run: cargo build --release
+        working-directory: web/backend
+
+      - name: Upload binary over SSH
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: web/backend/target/release/licensehub-web-backend
+          target: /opt/licensehub/bin/
+
+      - name: Restart service over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            chmod +x /opt/licensehub/bin/licensehub-web-backend
+            systemctl restart licensehub-web
+            sleep 2
+            systemctl is-active licensehub-web
+            curl -sf http://127.0.0.1:8080/api/public-key >/dev/null && echo "HEALTH OK" || echo "HEALTH CHECK FAILED"

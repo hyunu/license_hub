@@ -37,6 +37,20 @@ cd web/frontend && npm install && npm run build
 cd ../backend && cargo run   # http://127.0.0.1:8080
 ```
 
+## Ubuntu 배포 (Oracle Cloud + Tailscale)
+
+`web/deploy/ubuntu/README.md` 참고. Tailscale로 안전하게 접근하며, VCN
+포트 오픈 없이 운영 가능하다.
+
+## SSH 자동 배포 (Oracle)
+
+SSH 접근이 있으면 GitHub Actions로 자동 배포·환경 구축이 가능하다.
+
+- 환경 구축(1회): Actions → **Provision Oracle Backend**
+- 자동 배포: `main`에서 `core/`·`web/backend/` 변경 시, 또는 Actions →
+  **Deploy Backend to Oracle**
+- 상세: `web/deploy/ssh/README.md`
+
 ## 환경 변수 (backend)
 
 | 변수 | 기본값 | 설명 |

@@ -1,0 +1,58 @@
+name: Provision Oracle Backend
+
+# Oracle 인스턴스 환경을 1회 구축한다 (Caddy, systemd, /opt/licensehub, .env).
+# 수동 실행: Actions 탭 → Provision Oracle Backend → Run workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy bootstrap script
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: web/deploy/ssh/bootstrap.sh
+          target: /opt/licensehub/
+
+      - name: Write env and run provisioning
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: LICENSEHUB_SIGNING_KEY,LICENSEHUB_VERIFY_URL,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD,PROXY_DOMAIN
+          script: |
+            set -e
+            mkdir -p /opt/licensehub/data /opt/licensehub/bin /opt/licensehub/frontend
+
+            # 고정 설정 (비밀 아닌 부분)
+            cat > /opt/licensehub/.env <<'EOF'
+            BIND_ADDR=0.0.0.0:8080
+            LICENSEHUB_DB=/opt/licensehub/data/licensehub.db
+            FRONTEND_DIST=/opt/licensehub/frontend
+            EOF
+
+            # 시크릿 부분 (interpolation)
+            cat >> /opt/licensehub/.env <<EOF
+            LICENSEHUB_SIGNING_KEY=${LICENSEHUB_SIGNING_KEY}
+            LICENSEHUB_VERIFY_URL=${LICENSEHUB_VERIFY_URL}
+            LICENSEHUB_ADMIN_USER=${LICENSEHUB_ADMIN_USER}
+            LICENSEHUB_ADMIN_PASSWORD=${LICENSEHUB_ADMIN_PASSWORD}
+            EOF
+
+            chmod 600 /opt/licensehub/.env
+            echo "--- /opt/licensehub/.env (값 숨김) ---"
+            sed 's/=.*$/=<redacted>/' /opt/licensehub/.env
+
+            # Caddy 리버스프록시 도메인 (예: 146.56.10.20.sslip.io)
+            bash /opt/licensehub/bootstrap.sh "${PROXY_DOMAIN}"
+            echo "PROVISION OK"
