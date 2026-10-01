@@ -10,7 +10,9 @@ SSH 접근만 있으면 GitHub Actions로 Oracle(Ubuntu) 인스턴스에 백엔�
 인스턴스의 SSH 키를 GitHub Secrets에 등록한다.
 
 - **SSH_HOST** — 공인 IP 또는 도메인
-- **SSH_USER** — 인스턴스 사용자 (Ubuntu 이미지는 보통 `ubuntu`)
+- **SSH_USER** — 인스턴스 기본 계정
+  - **Oracle Linux**: `opc`
+  - Ubuntu: `ubuntu`
 - **SSH_PORT** — 22
 - **SSH_PRIVATE_KEY** — 인스턴스 접속용 개인키 (PEM, 전체 내용)
 
@@ -56,7 +58,7 @@ Actions 탭 → **Provision Oracle Backend** → Run workflow.
 
 ```sh
 cd web/deploy/ssh
-HOST=1.2.3.4 USER=ubuntu KEY=~/.ssh/id_ed25519 ./deploy.sh
+HOST=146.56.111.99 USER=opc KEY=~/.ssh/id_ed25519 ./deploy.sh
 ```
 
 ## 동작 흐름

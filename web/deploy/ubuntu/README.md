@@ -1,7 +1,15 @@
-# LicenseHub 백엔드 Ubuntu 배포 가이드 (Oracle Cloud + Tailscale)
+# LicenseHub 백엔드 배포 가이드 (Oracle Cloud)
 
-Oracle Cloud의 **Ubuntu 이미지** 인스턴스에서 백엔드를 실행하고, Tailscale로
-안전하게 접근하는 절차다.
+Oracle Cloud 인스턴스에서 백엔드를 실행하고, 무료 HTTPS로 공개하는 절차다.
+**Ubuntu 이미지와 Oracle Linux 이미지를 모두 지원한다.**
+
+| | Ubuntu | Oracle Linux |
+|---|---|---|
+| 기본 SSH 계정 | `ubuntu` | `opc` |
+| 패키지 매니저 | `apt-get` | `dnf` |
+| OS 방화벽 | `ufw` | `firewalld` |
+
+`bootstrap.sh`가 OS를 자동 감지해 처리한다.
 
 ## 요약
 

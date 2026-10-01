@@ -6,8 +6,8 @@ set -euo pipefail
 #   HOST=1.2.3.4 USER=ubuntu KEY=~/.ssh/id_ed25519 ./deploy.sh
 # 프론트를 백엔드가 서빙하려면 FRONTEND_DIST를 맞춰 /opt/licensehub/frontend 를 채운다.
 
-HOST="${HOST:?HOST 환경변수 필요 (예: 1.2.3.4 또는 licensehub.duckdns.org)}"
-USER="${USER:-ubuntu}"
+HOST="${HOST:?HOST 환경변수 필요 (예: 146.56.111.99 또는 licensehub.duckdns.org)}"
+USER="${USER:-opc}"   # Oracle Linux 기본 계정. Ubuntu는 ubuntu
 KEY="${KEY:-$HOME/.ssh/id_ed25519}"
 
 BACKEND_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../../backend" && pwd)
