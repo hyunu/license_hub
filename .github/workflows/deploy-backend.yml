@@ -39,30 +39,37 @@ jobs:
           echo "Detected instance arch: ${ARCH}"
           rm -f /tmp/lh_key
 
-      - name: Install musl toolchains
+      - name: Install cross toolchain
+        env:
+          ARCH: ${{ steps.arch.outputs.arch }}
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y musl-tools
-          curl -fsSL https://musl.cc/aarch64-linux-musl-cross.tgz -o /tmp/musl.tgz
-          tar -xzf /tmp/musl.tgz -C /tmp
-          echo "/tmp/aarch64-linux-musl-cross/bin" >> "$GITHUB_PATH"
+          if [ "${ARCH}" = "aarch64" ] || [ "${ARCH}" = "arm64" ]; then
+            # aarch64 musl 크로스 툴체인: zig (musl libc 내장, 정적 바이너리)
+            curl -fsSL https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz -o /tmp/zig.tar.xz
+            tar -xJf /tmp/zig.tar.xz -C /tmp
+            echo "/tmp/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+            zig version
+          else
+            sudo apt-get update -y
+            sudo apt-get install -y musl-tools
+          fi
 
       - name: Build backend (musl static)
         run: |
           if [ "${ARCH}" = "aarch64" ] || [ "${ARCH}" = "arm64" ]; then
-            echo "==> building aarch64-unknown-linux-musl"
+            echo "==> building aarch64-unknown-linux-musl (zig cc)"
             cargo build --release --target aarch64-unknown-linux-musl
           else
-            echo "==> building x86_64-unknown-linux-musl"
+            echo "==> building x86_64-unknown-linux-musl (musl-gcc)"
             cargo build --release --target x86_64-unknown-linux-musl
           fi
         working-directory: web/backend
         env:
           ARCH: ${{ steps.arch.outputs.arch }}
+          CC_aarch64_unknown_linux_musl: "zig cc -target aarch64-linux-musl"
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: "zig cc -target aarch64-linux-musl"
           CC_x86_64_unknown_linux_musl: musl-gcc
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-          CC_aarch64_unknown_linux_musl: aarch64-linux-musl-gcc
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-gcc
 
       - name: Upload binary over SSH
         uses: appleboy/scp-action@v0.1.7
