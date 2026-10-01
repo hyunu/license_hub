@@ -19,9 +19,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
 
-      - name: Build backend (release)
-        run: cargo build --release
+      - name: Install musl toolchain
+        run: sudo apt-get update -y && sudo apt-get install -y musl-tools
+
+      - name: Build backend (release, musl static)
+        run: cargo build --release --target x86_64-unknown-linux-musl
         working-directory: web/backend
 
       - name: Upload binary over SSH
@@ -31,7 +36,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: web/backend/target/release/licensehub-web-backend
+          source: web/backend/target/x86_64-unknown-linux-musl/release/licensehub-web-backend
           target: ~/licensehub-bin
 
       - name: Restart service over SSH
@@ -43,9 +48,15 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
-            sudo cp "$HOME/licensehub-bin/web/backend/target/release/licensehub-web-backend" /opt/licensehub/bin/
+            sudo cp "$HOME/licensehub-bin/web/backend/target/x86_64-unknown-linux-musl/release/licensehub-web-backend" /opt/licensehub/bin/
             sudo chmod +x /opt/licensehub/bin/licensehub-web-backend
             sudo systemctl restart licensehub-web
-            sleep 2
-            sudo systemctl is-active licensehub-web
-            curl -sf http://127.0.0.1:8080/api/public-key >/dev/null && echo "HEALTH OK" || echo "HEALTH CHECK FAILED"
+            sleep 3
+            STATUS=$(sudo systemctl is-active licensehub-web || true)
+            echo "service status: ${STATUS}"
+            if [ "${STATUS}" != "active" ]; then
+              echo "--- journalctl (최근 로그) ---"
+              sudo journalctl -u licensehub-web --no-pager -n 25 || true
+              exit 1
+            fi
+            curl -sf http://127.0.0.1:8080/api/public-key >/dev/null && echo "HEALTH OK" || { echo "HEALTH CHECK FAILED"; exit 1; }
