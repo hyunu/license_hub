@@ -1,0 +1,25 @@
+[package]
+name = "licensehub-web-backend"
+version = "0.1.0"
+edition = "2024"
+description = "LicenseHub admin dashboard backend"
+
+[dependencies]
+axum = { version = "0.8", features = ["json", "query"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+argon2 = "0.5"
+getrandom = "0.3"
+hex = "0.4"
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
+pkcs8 = { version = "0.10", features = ["pem"] }
+jsonwebtoken = "9"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+time = { version = "0.3", features = ["formatting", "macros"] }
+licensehub-core = { path = "../../core" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

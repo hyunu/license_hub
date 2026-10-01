@@ -18,3 +18,8 @@ packaging/python/build/
 packaging/python/dist/
 packaging/python/src/*.egg-info/
 packaging/python/src/licensehub_licenseguard/native/
+
+# 웹앱 산출물
+**/.env
+web/backend/data/
+web/frontend/dist/

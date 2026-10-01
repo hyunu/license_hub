@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    name: Core (Rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: fmt check
+        run: cargo fmt -- --check
+      - name: test
+        run: cargo test
+      - name: clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  backend:
+    name: Web Backend (Rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: fmt check
+        run: cargo fmt -- --check
+      - name: test
+        run: cargo test
+      - name: clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  frontend:
+    name: Web Frontend (React)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/frontend/package-lock.json
+      - name: install
+        run: npm ci
+      - name: build
+        run: npm run build
