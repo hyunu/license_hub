@@ -48,7 +48,7 @@ jobs:
             curl -fsSL https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz -o /tmp/zig.tar.xz
             tar -xJf /tmp/zig.tar.xz -C /tmp
             echo "/tmp/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
-            zig version
+            /tmp/zig-linux-x86_64-0.13.0/zig version
           else
             sudo apt-get update -y
             sudo apt-get install -y musl-tools
