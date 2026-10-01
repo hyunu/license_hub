@@ -54,7 +54,7 @@ sudo cp target/release/licensehub-web-backend /opt/licensehub/bin/
 
 ```sh
 # 도메인이 없다면 sslip.io: https://<공인IP>.sslip.io (무계정)
-PUBLIC_URL=https://146.56.10.20.sslip.io
+PUBLIC_URL=https://146.56.111.99.sslip.io
 
 BIND_ADDR=0.0.0.0:8080
 LICENSEHUB_DB=/opt/licensehub/data/licensehub.db
@@ -125,7 +125,7 @@ Oracle 인스턴스에서 완전 무료로 HTTPS를 구성한다. 도메인 구�
 `<공인IP>.sslip.io` 가 그 IP로 해석된다. 인스턴스 공인 IP를 확인:
 
 ```sh
-curl -4 ifconfig.me   # 예: 146.56.10.20 → 호스트명은 146.56.10.20.sslip.io
+curl -4 ifconfig.me   # 예: 146.56.111.99 → 호스트명은 146.56.111.99.sslip.io
 ```
 
 ```sh
@@ -134,7 +134,7 @@ sudo apt install -y caddy
 
 # /etc/caddy/Caddyfile — 공인 IP를 붙인 호스트명 사용
 echo '
-146.56.10.20.sslip.io {
+146.56.111.99.sslip.io {
     reverse_proxy 127.0.0.1:8080
 }
 ' | sudo tee /etc/caddy/Caddyfile
@@ -142,7 +142,7 @@ echo '
 sudo systemctl enable --now caddy
 ```
 
-- 최종 URL: `https://146.56.10.20.sslip.io`
+- 최종 URL: `https://146.56.111.99.sslip.io`
 - Caddy가 이 호스트명으로 Let's Encrypt 인증서를 자동 발급한다.
 - **주의**: 공인 IP가 바뀌면 호스트명도 바뀐다 → Oracle **예약 공인 IP
   (Reserved Public IP)**를 쓰면 IP가 유지된다.
