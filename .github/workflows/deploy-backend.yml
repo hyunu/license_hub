@@ -32,7 +32,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           source: web/backend/target/release/licensehub-web-backend
-          target: /opt/licensehub/bin/
+          target: ~/licensehub-bin
 
       - name: Restart service over SSH
         uses: appleboy/ssh-action@v1.2.0
@@ -43,8 +43,9 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
-            chmod +x /opt/licensehub/bin/licensehub-web-backend
-            systemctl restart licensehub-web
+            sudo cp "$HOME/licensehub-bin/licensehub-web-backend" /opt/licensehub/bin/
+            sudo chmod +x /opt/licensehub/bin/licensehub-web-backend
+            sudo systemctl restart licensehub-web
             sleep 2
-            systemctl is-active licensehub-web
+            sudo systemctl is-active licensehub-web
             curl -sf http://127.0.0.1:8080/api/public-key >/dev/null && echo "HEALTH OK" || echo "HEALTH CHECK FAILED"

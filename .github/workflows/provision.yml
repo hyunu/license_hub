@@ -20,7 +20,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           source: web/deploy/ssh/bootstrap.sh
-          target: /opt/licensehub/
+          target: ~/licensehub-setup
 
       - name: Write env and run provisioning
         uses: appleboy/ssh-action@v1.2.0
@@ -32,27 +32,28 @@ jobs:
           envs: LICENSEHUB_SIGNING_KEY,LICENSEHUB_VERIFY_URL,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD,PROXY_DOMAIN
           script: |
             set -e
-            mkdir -p /opt/licensehub/data /opt/licensehub/bin /opt/licensehub/frontend
+            sudo mkdir -p /opt/licensehub/data /opt/licensehub/bin /opt/licensehub/frontend
 
             # 고정 설정 (비밀 아닌 부분)
-            cat > /opt/licensehub/.env <<'EOF'
+            sudo tee /opt/licensehub/.env >/dev/null <<'EOF'
             BIND_ADDR=0.0.0.0:8080
             LICENSEHUB_DB=/opt/licensehub/data/licensehub.db
             FRONTEND_DIST=/opt/licensehub/frontend
             EOF
 
             # 시크릿 부분 (interpolation)
-            cat >> /opt/licensehub/.env <<EOF
+            sudo tee -a /opt/licensehub/.env >/dev/null <<EOF
             LICENSEHUB_SIGNING_KEY=${LICENSEHUB_SIGNING_KEY}
             LICENSEHUB_VERIFY_URL=${LICENSEHUB_VERIFY_URL}
             LICENSEHUB_ADMIN_USER=${LICENSEHUB_ADMIN_USER}
             LICENSEHUB_ADMIN_PASSWORD=${LICENSEHUB_ADMIN_PASSWORD}
             EOF
 
-            chmod 600 /opt/licensehub/.env
+            sudo chmod 600 /opt/licensehub/.env
             echo "--- /opt/licensehub/.env (값 숨김) ---"
-            sed 's/=.*$/=<redacted>/' /opt/licensehub/.env
+            sudo sed 's/=.*$/=<redacted>/' /opt/licensehub/.env
 
-            # Caddy 리버스프록시 도메인 (예: 146.56.10.20.sslip.io)
-            bash /opt/licensehub/bootstrap.sh "${PROXY_DOMAIN}"
+            # Caddy 리버스프록시 도메인 (예: 146.56.111.99.sslip.io)
+            sudo cp "$HOME/licensehub-setup/web/deploy/ssh/bootstrap.sh" /opt/licensehub/bootstrap.sh
+            sudo bash /opt/licensehub/bootstrap.sh "${PROXY_DOMAIN}"
             echo "PROVISION OK"
