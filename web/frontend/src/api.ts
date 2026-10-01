@@ -1,3 +1,5 @@
+import { demoAddBlacklist, demoAudit, demoBlacklist, demoCreateLicense, demoCreateUser, demoIssueCertificate, demoLicenses, demoLicensesByStatus, demoPublicKey, demoRemoveBlacklist, demoSetStatus, demoStats, demoUsers } from './demo'
+
 export interface User {
   id: number
   username: string
@@ -45,6 +47,12 @@ export interface Stats {
 
 const BASE: string = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''
 
+// 백엔드 URL이 설정되지 않았거나 VITE_DEMO_MODE=true 이면 데모 모드로 동작해
+// 목 데이터로 UI를 확인할 수 있다 (GitHub Pages 배포본 등).
+export const DEMO: boolean =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) === '' ||
+  (import.meta.env.VITE_DEMO_MODE as string | undefined) === 'true'
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -53,7 +61,63 @@ export class ApiError extends Error {
   }
 }
 
+function demoRoute<T>(path: string, options: RequestInit): Promise<T> {
+  const method = options.method ?? 'GET'
+  const [basePath, queryStr] = path.split('?')
+  const query = new URLSearchParams(queryStr ?? '')
+  const body = options.body ? (JSON.parse(options.body as string) as Record<string, unknown>) : undefined
+
+  if (basePath === '/api/auth/login') {
+    return Promise.resolve({
+      token: 'demo-token',
+      user: { id: 1, username: String(body?.username ?? 'demo'), role: 'admin' },
+    } as T)
+  }
+  if (basePath === '/api/auth/logout') return Promise.resolve({ ok: true } as T)
+  if (basePath === '/api/stats') return Promise.resolve(demoStats() as T)
+  if (basePath === '/api/public-key') return Promise.resolve(demoPublicKey() as T)
+
+  if (basePath === '/api/licenses' && method === 'GET') {
+    return Promise.resolve(demoLicensesByStatus(query.get('status') ?? undefined) as T)
+  }
+  if (basePath === '/api/licenses' && method === 'POST') {
+    return Promise.resolve(demoCreateLicense(body ?? {}) as T)
+  }
+  if (basePath.startsWith('/api/licenses/') && basePath.endsWith('/issue')) {
+    return Promise.resolve(demoIssueCertificate(Number(basePath.split('/')[3])) as T)
+  }
+  if (basePath.startsWith('/api/licenses/') && basePath.endsWith('/status')) {
+    demoSetStatus(Number(basePath.split('/')[3]), String(body?.status ?? 'active'))
+    return Promise.resolve({ ok: true } as T)
+  }
+
+  if (basePath === '/api/users' && method === 'GET') return Promise.resolve(demoUsers as T)
+  if (basePath === '/api/users' && method === 'POST') {
+    demoCreateUser(body as { username: string; password: string; role?: string })
+    return Promise.resolve({ ok: true } as T)
+  }
+
+  if (basePath === '/api/blacklist' && method === 'GET') return Promise.resolve(demoBlacklist as T)
+  if (basePath === '/api/blacklist' && method === 'POST') {
+    demoAddBlacklist(String(body?.license_id ?? ''), String(body?.reason ?? ''))
+    return Promise.resolve({ ok: true } as T)
+  }
+  if (basePath.startsWith('/api/blacklist/') && method === 'DELETE') {
+    demoRemoveBlacklist(decodeURIComponent(basePath.split('/')[3]))
+    return Promise.resolve({ ok: true } as T)
+  }
+
+  if (basePath === '/api/audit') return Promise.resolve(demoAudit as T)
+  if (basePath === '/api/sync/status') return Promise.resolve({ configured: false, repo: null } as T)
+  if (basePath.startsWith('/api/sync/')) {
+    return Promise.resolve({ ok: true, pushed: demoLicenses.length } as T)
+  }
+
+  return Promise.resolve({} as T)
+}
+
 async function request<T>(path: string, options: RequestInit = {}, auth = true): Promise<T> {
+  if (DEMO) return demoRoute<T>(path, options)
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) ?? {}),
@@ -123,6 +187,10 @@ export const api = {
 }
 
 export async function downloadCertificate(id: number, filename: string): Promise<void> {
+  if (DEMO) {
+    console.info(`[demo] download certificate for license #${id} -> ${filename}`)
+    return
+  }
   const token = localStorage.getItem('lh_token')
   const res = await fetch(BASE + `/api/licenses/${id}/download`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
+import { DEMO } from '../api'
 
 export function Login() {
   const { login } = useAuth()
@@ -28,6 +29,7 @@ export function Login() {
     <div className="login-page">
       <form className="card login-card" onSubmit={submit}>
         <h2>LicenseHub 관리자 로그인</h2>
+        {DEMO && <p className="notice">데모 모드 — 백엔드 없이 아무 계정으로 로그인할 수 있습니다</p>}
         <label>
           사용자명
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />

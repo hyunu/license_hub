@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
-import { api } from './api'
+import { api, DEMO } from './api'
 
 interface AuthUser {
   id: number
@@ -24,6 +24,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
 
   const login = async (username: string, password: string) => {
+    if (DEMO) {
+      // 데모 모드: 백엔드 없이 아무 계정으로 로그인해 UI를 확인한다.
+      const user: AuthUser = { id: 1, username: username || 'demo', role: 'admin' }
+      localStorage.setItem('lh_token', 'demo-token')
+      localStorage.setItem('lh_user', JSON.stringify(user))
+      setToken('demo-token')
+      setUser(user)
+      return
+    }
     const res = await api.login(username, password)
     localStorage.setItem('lh_token', res.token)
     localStorage.setItem('lh_user', JSON.stringify(res.user))
