@@ -204,3 +204,25 @@ export async function downloadCertificate(id: number, filename: string): Promise
   a.click()
   URL.revokeObjectURL(url)
 }
+
+// 라이선스가 사용한 검증 공개키(.pem) 다운로드. 발급 시 이력 DB에 저장된 값을
+// 반환하므로 개인키가 교체되어도 해당 라이선스의 공개키를 받을 수 있다.
+export async function downloadLicensePublicKey(licenseId: string): Promise<void> {
+  if (DEMO) {
+    console.info(`[demo] download public key for ${licenseId}`)
+    return
+  }
+  const token = localStorage.getItem('lh_token')
+  const res = await fetch(
+    BASE + `/api/certificates/${encodeURIComponent(licenseId)}/public-key/download`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  )
+  if (!res.ok) throw new Error(`public key download failed: ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${licenseId}-public-key.pem`
+  a.click()
+  URL.revokeObjectURL(url)
+}

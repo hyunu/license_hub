@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, downloadCertificate, type License } from '../api'
+import { api, downloadCertificate, downloadLicensePublicKey, type License } from '../api'
 
 const EMPTY_FORM = {
   license_id: '',
@@ -78,6 +78,14 @@ export function Licenses() {
       await downloadCertificate(lic.id, `${lic.license_id}.json`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'download failed')
+    }
+  }
+
+  const downloadKey = async (lic: License) => {
+    try {
+      await downloadLicensePublicKey(lic.license_id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'public key download failed')
     }
   }
 
@@ -181,6 +189,7 @@ export function Licenses() {
                 <td className="actions">
                   <button className="btn small primary" onClick={() => issue(l)}>발급</button>
                   <button className="btn small" onClick={() => download(l)}>다운로드</button>
+                  <button className="btn small" onClick={() => downloadKey(l)}>공개키</button>
                   <button className={`btn small ${l.status === 'active' ? 'danger' : ''}`} onClick={() => toggleStatus(l)}>
                     {l.status === 'active' ? '폐기' : '복구'}
                   </button>

@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS certificates (
     license_id TEXT NOT NULL,
     level INTEGER NOT NULL,
     cert_json TEXT NOT NULL,
+    key_id TEXT,
+    public_key TEXT,
     issued_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS blacklist (
@@ -71,6 +73,12 @@ pub fn open(path: &str) -> rusqlite::Result<Connection> {
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if !has_column(conn, "licenses", "metadata") {
         conn.execute_batch("ALTER TABLE licenses ADD COLUMN metadata TEXT;")?;
+    }
+    if !has_column(conn, "certificates", "key_id") {
+        conn.execute_batch("ALTER TABLE certificates ADD COLUMN key_id TEXT;")?;
+    }
+    if !has_column(conn, "certificates", "public_key") {
+        conn.execute_batch("ALTER TABLE certificates ADD COLUMN public_key TEXT;")?;
     }
     Ok(())
 }

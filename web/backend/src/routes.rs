@@ -4,7 +4,6 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use ed25519_dalek::VerifyingKey;
 use licensehub_core::{CertificateRequest, Issuer};
 use pkcs8::{EncodePublicKey, LineEnding};
 use rusqlite::{Connection, params};
@@ -20,7 +19,6 @@ use crate::models::*;
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
     pub issuer: Arc<Issuer>,
-    pub public_key: VerifyingKey,
     pub verify_url: String,
     pub github: Option<GitHubClient>,
 }
@@ -163,9 +161,10 @@ pub async fn stats(
 }
 
 pub async fn public_key(State(state): State<Arc<AppState>>) -> Json<Value> {
-    let raw = state.public_key.to_bytes();
-    let pem = state
-        .public_key
+    // 다운로드/조회 시점에 항상 개인키에서 파생한다(캐시를 신뢰하지 않음).
+    let public_key = state.issuer.verifying_key();
+    let raw = public_key.to_bytes();
+    let pem = public_key
         .to_public_key_pem(LineEnding::LF)
         .unwrap_or_default();
     Json(json!({
@@ -174,6 +173,80 @@ pub async fn public_key(State(state): State<Arc<AppState>>) -> Json<Value> {
         "hex": hex::encode(raw),
         "pem": pem
     }))
+}
+
+/// 공개키를 다운로드 파일(.pem)로 내려받는다.
+/// 요청 시점에 개인키에서 추출하므로 저장·캐시된 값과 항상 일치한다.
+pub async fn download_public_key(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
+    let public_key = state.issuer.verifying_key();
+    let pem = public_key
+        .to_public_key_pem(LineEnding::LF)
+        .map_err(|e| internal(&e.to_string()))?;
+    let mut hdrs = HeaderMap::new();
+    hdrs.insert(
+        header::CONTENT_TYPE,
+        "application/x-pem-file".parse().unwrap(),
+    );
+    hdrs.insert(
+        header::CONTENT_DISPOSITION,
+        "attachment; filename=\"public-key.pem\"".parse().unwrap(),
+    );
+    Ok((hdrs, pem).into_response())
+}
+
+/// 특정 라이선스의 최신 인증서가 서명될 때 사용한 공개키를 반환한다.
+/// 발급 시 certificates.public_key 에 보존해 두므로, 개인키가 교체되어도
+/// 이전 인증서의 검증 공개키를 추출할 수 있다.
+pub async fn certificate_public_key(
+    State(state): State<Arc<AppState>>,
+    Path(license_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let (key_id, public_key): (String, String) = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT key_id, public_key FROM certificates
+             WHERE license_id = ?1 AND public_key IS NOT NULL
+             ORDER BY id DESC LIMIT 1",
+            params![license_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|_| not_found("no certificate with recorded public key"))?
+    };
+    Ok(Json(json!({
+        "license_id": license_id,
+        "key_id": key_id,
+        "public_key": public_key,
+    })))
+}
+
+/// 특정 라이선스의 최신 인증서가 사용한 공개키를 .pem 파일로 내려받는다.
+pub async fn download_certificate_public_key(
+    State(state): State<Arc<AppState>>,
+    Path(license_id): Path<String>,
+) -> Result<Response, ApiError> {
+    let public_key: String = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT public_key FROM certificates
+             WHERE license_id = ?1 AND public_key IS NOT NULL
+             ORDER BY id DESC LIMIT 1",
+            params![license_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| not_found("no certificate with recorded public key"))?
+    };
+    let mut hdrs = HeaderMap::new();
+    hdrs.insert(
+        header::CONTENT_TYPE,
+        "application/x-pem-file".parse().unwrap(),
+    );
+    hdrs.insert(
+        header::CONTENT_DISPOSITION,
+        format!("attachment; filename=\"{}-public-key.pem\"", license_id)
+            .parse()
+            .unwrap(),
+    );
+    Ok((hdrs, public_key).into_response())
 }
 
 // ---------------- Licenses ----------------
@@ -386,11 +459,19 @@ pub async fn issue_certificate(
         .issue(req)
         .map_err(|e| bad_request(&e.to_string()))?;
     let cert_json = serde_json::to_string(&cert).map_err(|e| internal(&e.to_string()))?;
+    // 발급 시점의 공개키·key_id를 이력 DB에 함께 저장한다. 나중에 개인키가
+    // 교체되어도 이 인증서를 검증할 공개키를 항상 추출할 수 있다.
+    let sign_key_id = cert.key_id.clone();
+    let sign_public_key = state
+        .issuer
+        .verifying_key()
+        .to_public_key_pem(LineEnding::LF)
+        .map_err(|e| internal(&e.to_string()))?;
     {
         let db = state.db.lock().unwrap();
         db.execute(
-            "INSERT INTO certificates (certificate_id, license_id, level, cert_json, issued_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![cert.certificate_id, lic.license_id, lic.level, cert_json, now_rfc3339()],
+            "INSERT INTO certificates (certificate_id, license_id, level, cert_json, key_id, public_key, issued_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![cert.certificate_id, lic.license_id, lic.level, cert_json, sign_key_id, sign_public_key, now_rfc3339()],
         )
         .map_err(|e| internal(&e.to_string()))?;
     }
@@ -768,7 +849,8 @@ pub async fn sync_public_key(
     let user = auth_user(&state, &headers)?;
     let client = github_client(&state)?;
     let pem = state
-        .public_key
+        .issuer
+        .verifying_key()
         .to_public_key_pem(LineEnding::LF)
         .map_err(|e| internal(&e.to_string()))?;
     client.push_public_key(&pem).map_err(|e| internal(&e))?;

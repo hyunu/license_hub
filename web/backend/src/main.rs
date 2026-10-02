@@ -49,14 +49,11 @@ fn main() {
             Issuer::generate("license-signing-key")
         }
     };
-    let public_key = issuer.verifying_key();
-
     let github = config.github.clone().map(GitHubClient::new);
 
     let state = Arc::new(AppState {
         db: Arc::new(Mutex::new(conn)),
         issuer: Arc::new(issuer),
-        public_key,
         verify_url: config.verify_url.clone(),
         github,
     });
@@ -78,6 +75,15 @@ fn main() {
         .route("/api/me", get(routes::me))
         .route("/api/stats", get(routes::stats))
         .route("/api/public-key", get(routes::public_key))
+        .route("/api/public-key/download", get(routes::download_public_key))
+        .route(
+            "/api/certificates/{license_id}/public-key",
+            get(routes::certificate_public_key),
+        )
+        .route(
+            "/api/certificates/{license_id}/public-key/download",
+            get(routes::download_certificate_public_key),
+        )
         .route("/api/verify", post(routes::verify))
         .route("/api/claim/{license_id}", get(routes::claim_certificate))
         .route("/api/client/blacklist", get(routes::client_blacklist))

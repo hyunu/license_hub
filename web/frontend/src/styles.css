@@ -56,7 +56,10 @@ a { color: inherit; }
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
+  position: relative;
+  transition: width .18s ease, flex-basis .18s ease;
 }
+.sidebar.collapsed { width: 56px; flex-basis: 56px; }
 .sidebar .brand {
   padding: 16px 18px 13px;
   border-bottom: 1px solid var(--line);
@@ -70,11 +73,37 @@ a { color: inherit; }
 
 .sidebar nav { flex: 1; padding: 10px 0; }
 .nav-item {
-  display: block; padding: 7px 18px; text-decoration: none; font-size: 13.5px;
+  display: flex; align-items: center; gap: 10px; padding: 7px 18px;
+  text-decoration: none; font-size: 13.5px;
   border-left: 2px solid transparent; color: var(--ink);
 }
+.nav-item .nav-ico { display: flex; flex: 0 0 auto; }
 .nav-item:hover { background: rgba(0,0,0,.03); }
 .nav-item.active { border-left-color: var(--accent); background: rgba(0,0,0,.04); }
+
+.sidebar.collapsed nav { padding: 10px 0; }
+.sidebar.collapsed .nav-item { justify-content: center; gap: 0; padding: 8px 0; }
+.sidebar.collapsed .nav-label { display: none; }
+.sidebar.collapsed .brand { padding: 16px 0; text-align: center; }
+.sidebar.collapsed .brand .row { justify-content: center; }
+.sidebar.collapsed .brand .name,
+.sidebar.collapsed .brand .sub { display: none; }
+.sidebar.collapsed .foot { padding: 12px 0; text-align: center; }
+.sidebar.collapsed .foot .mono,
+.sidebar.collapsed .foot .who .mono { display: none; }
+.sidebar.collapsed .foot .who { justify-content: center; }
+.sidebar.collapsed .logout-label { display: none; }
+.sidebar.collapsed .foot .who .btn { padding: 4px 5px; }
+
+/* 수직 중앙 둥근 토글 버튼 */
+.toggle-btn {
+  position: absolute; right: -14px; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--panel); border: 1px solid var(--line-strong);
+  color: var(--ink); cursor: pointer; z-index: 5;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.toggle-btn:hover { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 
 .sidebar .foot { border-top: 1px solid var(--line); padding: 12px 18px; font-size: 12px; color: var(--muted); }
 .sidebar .foot .mono { font: 11px var(--mono); margin-bottom: 8px; }
