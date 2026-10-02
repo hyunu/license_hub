@@ -12,16 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy bootstrap script
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          source: web/deploy/ssh
-          target: ~/licensehub-setup
-
       - name: Prepare GitHub App key (base64)
         env:
           LH_KEY: ${{ secrets.LH_GITHUB_APP_PRIVATE_KEY }}
@@ -41,6 +31,16 @@ jobs:
           else
             echo "WARNING: LH_GITHUB_APP_PRIVATE_KEY is EMPTY"
           fi
+
+      - name: Copy bootstrap script
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: web/deploy/ssh
+          target: ~/licensehub-setup
 
       - name: Write env and run provisioning
         uses: appleboy/ssh-action@v1.2.0
