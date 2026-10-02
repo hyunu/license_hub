@@ -212,4 +212,49 @@ mod tests {
         let result = verify_trusted(&x, &crate::VerificationContext::default());
         assert!(matches!(result, Err(VerificationError::InvalidSignature)));
     }
+
+    #[test]
+    fn host_identity_is_compared_against_signed_info() {
+        use crate::{CertificateRequest, Issuer, VerificationContext, VerificationError, verify};
+
+        // 코어가 호스트 앱의 특이점(제품명·버전)을 서명된 정보(X)와 대조한다.
+        // verify_trusted도 동일한 verify()를 거치므로 같은 규칙이 적용된다.
+        let signing = SigningKey::generate(&mut OsRng);
+        let issuer = Issuer::from_bytes("k1", &signing.to_bytes());
+        let x = issuer
+            .issue(CertificateRequest::new(
+                "EX-1",
+                1,
+                "ExodusSimEngine",
+                "1.0.0",
+            ))
+            .unwrap();
+        let key = signing.verifying_key();
+
+        // (1) 호스트 특이점이 X의 서명된 설명과 일치 → 유효
+        let ctx = VerificationContext {
+            product: Some("ExodusSimEngine".into()),
+            version: Some("1.0.0".into()),
+            ..Default::default()
+        };
+        assert!(verify(&x, &key, &ctx).is_ok());
+
+        // (2) 다른 앱(B)이 코어를 끼워 쓰면 특이점 불일치 → 거부
+        let ctx_b = VerificationContext {
+            product: Some("OtherApp".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            verify(&x, &key, &ctx_b),
+            Err(VerificationError::PolicyRejected)
+        ));
+
+        // (3) 개발 편의: 제품명만 대조(version 생략)하면 리빌드와 무관하게 동작
+        let ctx_dev = VerificationContext {
+            product: Some("ExodusSimEngine".into()),
+            version: None,
+            ..Default::default()
+        };
+        assert!(verify(&x, &key, &ctx_dev).is_ok());
+    }
 }
