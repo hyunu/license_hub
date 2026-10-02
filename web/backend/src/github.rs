@@ -79,9 +79,34 @@ impl GitHubClient {
         Ok(body.token)
     }
 
+    /// 설치 토큰이 대상 저장소에 접근 가능한지 확인한다.
+    /// 404는 "저장소가 없거나 앱이 설치되어 있지 않음"을 의미한다.
+    fn check_repo_access(&self, token: &str) -> Result<(), String> {
+        let url = format!("{API}/repos/{}/{}", self.config.owner, self.config.repo);
+        let resp = self
+            .client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .map_err(|e| format!("github repo check failed: {e}"))?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(format!(
+                "GitHub repository {}/{} is not accessible (404). \
+                 Check GITHUB_REPO and make sure the GitHub App is installed on that repository.",
+                self.config.owner, self.config.repo
+            ));
+        }
+        if !resp.status().is_success() {
+            return Err(format!("github repo check error: {}", resp.status()));
+        }
+        Ok(())
+    }
+
     /// Repository의 한 파일을 새로 쓰거나 갱신한다.
     fn write_file(&self, path: &str, content_b64: &str, message: &str) -> Result<(), String> {
         let token = self.installation_token()?;
+        self.check_repo_access(&token)?;
         let repo_path = format!("{}/{}/{}", self.config.owner, self.config.repo, path);
 
         let get_url = format!("{API}/repos/{repo_path}");
