@@ -34,7 +34,7 @@ struct InstallationReposResp {
 struct InstallationRepo {
     full_name: String,
     #[serde(default)]
-    permissions: HashMap<String, String>,
+    permissions: HashMap<String, bool>,
 }
 
 /// GitHub Repository 동기화 클라이언트.
@@ -119,16 +119,13 @@ impl GitHubClient {
                  앱이 그 저장소에 설치되어 있는지 확인하세요."
             )),
             Some(repo) => {
-                let contents = repo
-                    .permissions
-                    .get("contents")
-                    .cloned()
-                    .unwrap_or_default();
-                if contents != "write" {
+                let push = repo.permissions.get("push").copied().unwrap_or(false);
+                if !push {
                     return Err(format!(
-                        "GitHub App의 저장소 '{target}' Contents 유효 권한이 '{contents}'입니다. \
-                         'write'가 필요합니다. 앱 권한(Contents=Read and write) 변경 후 \
-                         설치를 재승인(Uninstall→Install)해야 합니다."
+                        "GitHub App 설치 토큰이 '{target}' 저장소에 push 권한이 없습니다(push=false). \
+                         앱 설정이 Contents=Read and write여도, 권한 변경 후 설치를 재승인하지 않으면 \
+                         반영되지 않습니다. 해결: GitHub App → Install App → 해당 설치를 \
+                         Uninstall 후 다시 Install하세요."
                     ));
                 }
                 Ok(())
