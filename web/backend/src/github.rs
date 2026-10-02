@@ -190,7 +190,10 @@ impl GitHubClient {
         if !self.is_pat_mode() {
             self.check_repo_access(&token)?;
         }
-        let repo_path = format!("{}/{}/{}", self.config.owner, self.config.repo, path);
+        let repo_path = format!(
+            "{}/{}/contents/{}",
+            self.config.owner, self.config.repo, path
+        );
 
         let get_url = format!("{API}/repos/{repo_path}");
         let existing_sha: Option<String> = {
