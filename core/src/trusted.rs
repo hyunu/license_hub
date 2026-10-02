@@ -6,11 +6,13 @@
 //! 마스크(XOR)로 감싸고 저장 순서도 섞어 둔 뒤, 사용 시점에만 재조립한다.
 //!
 //! 보안 한계: 재조립 후 메모리에 키가 잠시 나타나므로 동적 분석으로 추출할
-//! 수 있다. 정적 패치의 난이도를 높이는 장치이며 절대적 보호는 아니다.
+//! 수 있다. 이를 줄이기 위해 재조립 버퍼는 사용 직후 0으로 덮어쓴다(Zeroize).
+//! `verify_trusted`는 키를 함수 밖으로 노출하지 않아 가장 짧은 수명을 보장한다.
 //! 변경 시 `cargo run --example gen_trusted_key` 로 새 상수를 생성한다.
 
 use ed25519_dalek::VerifyingKey;
 use sha2::{Digest, Sha256};
+use zeroize::Zeroize;
 
 // 재조립된 키가 빌드 시점의 원본과 같은지 확인하는 무결성 해시.
 // 값이 다르면 저장본이 훼손된 것이므로 검증을 거부한다(fail closed).
@@ -43,25 +45,51 @@ const PARTS: [[u8; 8]; 4] = [
 /// 분산 저장된 K1 공개키를 재조립해 반환한다.
 ///
 /// 무결성 검증 실패 시 panic 한다. 평문 키 상수를 두지 않아 정적 분석으로
-/// 키를 직접 찾기 어렵다.
+/// 키를 직접 찾기 어렵다. 반환된 공개키는 호출자의 책임 하에 사용하며,
+/// 내부 임시 버퍼는 사용 직후 0으로 덮어쓴다.
 pub fn trusted_public_key() -> VerifyingKey {
-    let key = assemble();
-    let digest = Sha256::digest(key);
-    assert_eq!(
-        digest.as_slice(),
-        &KEY_SHA256,
-        "trusted key integrity check failed"
-    );
-    VerifyingKey::from_bytes(&key).expect("trusted key is not a valid Ed25519 key")
+    let mut key = reconstruct();
+    let vk = VerifyingKey::from_bytes(&key).expect("trusted key is not a valid Ed25519 key");
+    key.zeroize();
+    vk
 }
 
-fn assemble() -> [u8; 32] {
+/// 분산 저장된 K1 공개키로 인증서(X)를 검증한다.
+///
+/// 키를 함수 밖으로 노출하지 않고 재조립·검증·파기한다. 검증에 필요한
+/// 시점에만 키가 메모리에 존재하며, 반환 전에 0으로 덮어쓴다.
+pub fn verify_trusted(
+    certificate: &crate::Certificate,
+    context: &crate::VerificationContext,
+) -> Result<(), crate::VerificationError> {
+    let mut key = reconstruct();
+    let vk = match VerifyingKey::from_bytes(&key) {
+        Ok(vk) => vk,
+        Err(_) => {
+            key.zeroize();
+            return Err(crate::VerificationError::InvalidFormat);
+        }
+    };
+    let result = crate::verify(certificate, &vk, context);
+    key.zeroize();
+    result
+}
+
+/// 분산 조각을 재조립하고 무결성 해시를 확인한다.
+/// 호출자는 반환 버퍼를 사용 후 반드시 zeroize 해야 한다.
+fn reconstruct() -> [u8; 32] {
     let mut key = [0u8; 32];
     for (i, &slot) in ORDER.iter().enumerate() {
         for b in 0..8 {
             key[slot * 8 + b] = PARTS[i][b] ^ MASKS[i][b];
         }
     }
+    let digest = Sha256::digest(key);
+    assert_eq!(
+        digest.as_slice(),
+        &KEY_SHA256,
+        "trusted key integrity check failed"
+    );
     key
 }
 
@@ -167,5 +195,21 @@ mod tests {
 
         let ctx = crate::VerificationContext::default();
         verify(&x, &trusted, &ctx).unwrap();
+    }
+
+    #[test]
+    fn verify_trusted_rejects_cert_signed_by_other_key() {
+        use crate::{CertificateRequest, Issuer, VerificationError};
+
+        // 내장 K1이 아닌 다른 키로 서명한 인증서는 verify_trusted가 거부한다.
+        // (내장 K1 개인키는 저장소에 두지 않으므로 유효 케이스는 C ABI
+        // /바인딩 경로로만 확인한다.)
+        let signing = SigningKey::generate(&mut OsRng);
+        let issuer = Issuer::from_bytes("other", &signing.to_bytes());
+        let x = issuer
+            .issue(CertificateRequest::new("EX-2", 1, "Other", "1.0.0"))
+            .unwrap();
+        let result = verify_trusted(&x, &crate::VerificationContext::default());
+        assert!(matches!(result, Err(VerificationError::InvalidSignature)));
     }
 }

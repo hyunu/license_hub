@@ -19,6 +19,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::slice;
 use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use zeroize::Zeroize;
 
 pub mod trusted;
 
@@ -908,9 +909,10 @@ pub unsafe extern "C" fn lh_trusted_public_key(out: *mut u8, out_len: *mut usize
         return -1;
     }
     let outcome = catch_unwind(AssertUnwindSafe(|| {
-        let key = trusted::trusted_public_key().to_bytes();
+        let mut key = trusted::trusted_public_key().to_bytes();
         let capacity = unsafe { *out_len };
         if capacity < key.len() {
+            key.zeroize();
             unsafe { *out_len = key.len() };
             return Err(-1i32);
         }
@@ -918,6 +920,7 @@ pub unsafe extern "C" fn lh_trusted_public_key(out: *mut u8, out_len: *mut usize
             std::ptr::copy_nonoverlapping(key.as_ptr(), out, key.len());
             *out_len = key.len();
         }
+        key.zeroize();
         Ok::<(), i32>(())
     }));
     match outcome {
@@ -965,10 +968,8 @@ pub unsafe extern "C" fn lh_verify_trusted_certificate(
             serde_json::from_slice(certificate_bytes).map_err(|_| -2i32)?;
         let ffi_context: FfiVerificationContext =
             serde_json::from_slice(context_bytes).map_err(|_| -2i32)?;
-        let trusted = trusted::trusted_public_key();
-        Ok::<u32, i32>(verification_code(verify(
+        Ok::<u32, i32>(verification_code(trusted::verify_trusted(
             &certificate,
-            &trusted,
             &ffi_context.into_context(),
         )))
     }));

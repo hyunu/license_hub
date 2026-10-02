@@ -199,6 +199,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "time",
+ "zeroize",
 ]
 
 [[package]]
