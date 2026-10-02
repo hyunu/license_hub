@@ -11,7 +11,7 @@ export function Dashboard() {
   useEffect(() => {
     api.stats().then(setStats).catch((e) => setError(String(e)))
     api.licenses().then((l) => setLicenses(l.slice(0, 10))).catch(() => {})
-    api.audit().then((a) => setAudit(a.slice(0, 15))).catch(() => {})
+    api.audit().then((a) => setAudit(a.slice(0, 8))).catch(() => {})
   }, [])
 
   const rows: Array<[string, number | undefined]> = [
