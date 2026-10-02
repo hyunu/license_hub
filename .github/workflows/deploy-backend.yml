@@ -62,8 +62,10 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
-            sudo cp "$HOME/licensehub-bin/licensehub-web-backend.musl" /opt/licensehub/bin/licensehub-web-backend
-            sudo chmod +x /opt/licensehub/bin/licensehub-web-backend
+            # 실행 중인 바이너리는 cp로 덮을 수 없음(Text file busy) → 임시파일 + mv
+            sudo cp "$HOME/licensehub-bin/licensehub-web-backend.musl" /opt/licensehub/bin/licensehub-web-backend.new
+            sudo chmod +x /opt/licensehub/bin/licensehub-web-backend.new
+            sudo mv -f /opt/licensehub/bin/licensehub-web-backend.new /opt/licensehub/bin/licensehub-web-backend
             sudo systemctl restart licensehub-web
             sleep 3
             STATUS=$(sudo systemctl is-active licensehub-web || true)
