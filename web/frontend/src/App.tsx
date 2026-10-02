@@ -17,23 +17,32 @@ function Protected() {
 function Layout() {
   const { user, logout } = useAuth()
   return (
-    <div className="layout">
+    <div className="app">
       <aside className="sidebar">
-        <h1>LicenseHub</h1>
+        <div className="brand">
+          <div className="row">
+            <span className="mark" />
+            <span className="name">LicenseHub</span>
+          </div>
+          <div className="sub">certificate registry · admin</div>
+        </div>
         <nav>
-          <NavLink to="/">대시보드</NavLink>
-          <NavLink to="/licenses">라이선스</NavLink>
-          <NavLink to="/blacklist">Blacklist</NavLink>
-          <NavLink to="/users">사용자</NavLink>
-          <NavLink to="/audit">감사 로그</NavLink>
-          <NavLink to="/sync">GitHub 동기화</NavLink>
+          <NavLink to="/" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>운영 현황</NavLink>
+          <NavLink to="/licenses" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>라이선스</NavLink>
+          <NavLink to="/blacklist" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>Blacklist</NavLink>
+          <NavLink to="/users" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>사용자</NavLink>
+          <NavLink to="/audit" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>감사 로그</NavLink>
+          <NavLink to="/sync" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>GitHub 동기화</NavLink>
         </nav>
-        <div className="sidebar-footer">
-          <span>{user?.username} ({user?.role})</span>
-          <button onClick={logout}>로그아웃</button>
+        <div className="foot">
+          <div className="mono">{user?.username} · {user?.role}</div>
+          <div className="who">
+            <span className="mono">oracle · linux</span>
+            <button className="btn small" onClick={logout}>로그아웃</button>
+          </div>
         </div>
       </aside>
-      <main className="content">
+      <main className="main">
         <Outlet />
       </main>
     </div>
