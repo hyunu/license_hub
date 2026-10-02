@@ -37,6 +37,11 @@ struct InstallationRepo {
     permissions: HashMap<String, bool>,
 }
 
+#[derive(Deserialize)]
+struct AppResp {
+    permissions: HashMap<String, String>,
+}
+
 /// GitHub Repository 동기화 클라이언트.
 ///
 /// GitHub App 자격증명으로 설치 토큰을 발급받아 인증서/Blacklist/공개키를
@@ -92,6 +97,27 @@ impl GitHubClient {
         Ok(body.token)
     }
 
+    /// 앱 자체가 선언한 권한(GET /app)을 조회한다.
+    /// 설치 토큰과 무관하게 앱 설정에 저장된 권한을 알려준다.
+    fn app_declared_permissions(&self) -> Result<HashMap<String, String>, String> {
+        let jwt = self.app_jwt()?;
+        let url = format!("{API}/app");
+        let resp = self
+            .client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("Authorization", format!("Bearer {jwt}"))
+            .send()
+            .map_err(|e| format!("github app info failed: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("github app info error: {}", resp.status()));
+        }
+        let body: AppResp = resp
+            .json()
+            .map_err(|e| format!("github app info parse: {e}"))?;
+        Ok(body.permissions)
+    }
+
     /// 설치 토큰이 대상 저장소에 접근 가능한지 + Contents 쓰기 권한이 있는지 확인.
     /// /installation/repositories 는 설치 토큰의 "실제 유효 권한"을 반환한다.
     fn check_repo_access(&self, token: &str) -> Result<(), String> {
@@ -121,11 +147,13 @@ impl GitHubClient {
             Some(repo) => {
                 let push = repo.permissions.get("push").copied().unwrap_or(false);
                 if !push {
+                    let app_perms = self.app_declared_permissions().unwrap_or_default();
+                    let app_contents = app_perms.get("contents").cloned().unwrap_or_default();
                     return Err(format!(
                         "GitHub App 설치 토큰이 '{target}' 저장소에 push 권한이 없습니다(push=false). \
-                         앱 설정이 Contents=Read and write여도, 권한 변경 후 설치를 재승인하지 않으면 \
-                         반영되지 않습니다. 해결: GitHub App → Install App → 해당 설치를 \
-                         Uninstall 후 다시 Install하세요."
+                         앱이 선언한 Contents 권한: '{app_contents}'. \
+                         앱 설정(Permissions → Contents)이 반드시 'Read and write'여야 하며, \
+                         변경 후 설치를 Uninstall→Install로 재승인해야 합니다."
                     ));
                 }
                 Ok(())
