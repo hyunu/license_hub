@@ -206,6 +206,17 @@ export async function downloadCertificate(id: number, filename: string): Promise
   URL.revokeObjectURL(url)
 }
 
+// 라이선스의 최신 인증서 JSON을 조회한다 (다운로드 경로 재사용).
+export async function getCertificate(id: number): Promise<Record<string, unknown>> {
+  if (DEMO) return demoIssueCertificate(id).certificate
+  const token = localStorage.getItem('lh_token')
+  const res = await fetch(BASE + `/api/licenses/${id}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new Error(`certificate load failed: ${res.status}`)
+  return res.json()
+}
+
 // 라이선스가 사용한 검증 공개키(.pem) 다운로드. 발급 시 이력 DB에 저장된 값을
 // 반환하므로 개인키가 교체되어도 해당 라이선스의 공개키를 받을 수 있다.
 export async function downloadLicensePublicKey(licenseId: string): Promise<void> {

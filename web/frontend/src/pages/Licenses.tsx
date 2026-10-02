@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, downloadCertificate, downloadLicensePublicKey, type License } from '../api'
+import { api, downloadCertificate, downloadLicensePublicKey, getCertificate, type License } from '../api'
 import { Toasts, useToasts } from '../toast'
 
 const EMPTY_FORM = {
@@ -80,6 +80,19 @@ export function Licenses() {
       await downloadCertificate(lic.id, `${lic.license_id}.json`)
     } catch (err) {
       bad(err instanceof Error ? err.message : 'download failed')
+    }
+  }
+
+  const viewCert = async (lic: License) => {
+    if (lic.certificates === 0) {
+      bad(`'${lic.license_id}'에 아직 발급된 인증서가 없습니다 — 먼저 발급하세요`)
+      return
+    }
+    try {
+      const cert = await getCertificate(lic.id)
+      setCertView({ license: lic.license_id, cert })
+    } catch (err) {
+      bad(err instanceof Error ? err.message : 'certificate load failed')
     }
   }
 
@@ -189,6 +202,8 @@ export function Licenses() {
                 <td className="mono muted">{l.level === 3 && l.device_id ? 'bound' : l.certificates > 0 ? `${l.certificates}회` : '—'}</td>
                 <td className="actions">
                   <button className="btn small primary" onClick={() => issue(l)}>발급</button>
+                  <button className="btn small" onClick={() => viewCert(l)} disabled={l.certificates === 0}
+                    title={l.certificates === 0 ? '인증서를 먼저 발급하세요' : undefined}>보기</button>
                   <button className="btn small" onClick={() => download(l)} disabled={l.certificates === 0}
                     title={l.certificates === 0 ? '인증서를 먼저 발급하세요' : undefined}>다운로드</button>
                   <button className="btn small" onClick={() => downloadKey(l)}>공개키</button>
