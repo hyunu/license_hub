@@ -1,7 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use time::OffsetDateTime;
 
 use crate::config::GitHubConfig;
@@ -33,13 +32,6 @@ struct InstallationReposResp {
 #[derive(Deserialize)]
 struct InstallationRepo {
     full_name: String,
-    #[serde(default)]
-    permissions: HashMap<String, bool>,
-}
-
-#[derive(Deserialize)]
-struct AppResp {
-    permissions: HashMap<String, String>,
 }
 
 /// GitHub Repository 동기화 클라이언트.
@@ -97,29 +89,9 @@ impl GitHubClient {
         Ok(body.token)
     }
 
-    /// 앱 자체가 선언한 권한(GET /app)을 조회한다.
-    /// 설치 토큰과 무관하게 앱 설정에 저장된 권한을 알려준다.
-    fn app_declared_permissions(&self) -> Result<HashMap<String, String>, String> {
-        let jwt = self.app_jwt()?;
-        let url = format!("{API}/app");
-        let resp = self
-            .client
-            .get(&url)
-            .header("Accept", "application/vnd.github+json")
-            .header("Authorization", format!("Bearer {jwt}"))
-            .send()
-            .map_err(|e| format!("github app info failed: {e}"))?;
-        if !resp.status().is_success() {
-            return Err(format!("github app info error: {}", resp.status()));
-        }
-        let body: AppResp = resp
-            .json()
-            .map_err(|e| format!("github app info parse: {e}"))?;
-        Ok(body.permissions)
-    }
-
-    /// 설치 토큰이 대상 저장소에 접근 가능한지 + Contents 쓰기 권한이 있는지 확인.
-    /// /installation/repositories 는 설치 토큰의 "실제 유효 권한"을 반환한다.
+    /// 설치 토큰이 대상 저장소에 접근 가능한지 확인.
+    /// /installation/repositories 로 설치 내 저장소 포함 여부만 확인한다.
+    /// 실제 쓰기 권한은 write 시도 결과로 판단한다.
     fn check_repo_access(&self, token: &str) -> Result<(), String> {
         let url = format!("{API}/installation/repositories");
         let resp = self
@@ -139,26 +111,15 @@ impl GitHubClient {
             .map_err(|e| format!("github repo check parse: {e} body={text}"))?;
 
         let target = format!("{}/{}", self.config.owner, self.config.repo);
-        match body.repositories.iter().find(|r| r.full_name == target) {
-            None => Err(format!(
+        if !body.repositories.iter().any(|r| r.full_name == target) {
+            return Err(format!(
                 "GitHub App이 저장소 '{target}'에 접근할 수 없습니다. \
                  앱이 그 저장소에 설치되어 있는지 확인하세요."
-            )),
-            Some(repo) => {
-                let push = repo.permissions.get("push").copied().unwrap_or(false);
-                if !push {
-                    let app_perms = self.app_declared_permissions().unwrap_or_default();
-                    let app_contents = app_perms.get("contents").cloned().unwrap_or_default();
-                    return Err(format!(
-                        "GitHub App 설치 토큰이 '{target}' 저장소에 push 권한이 없습니다(push=false). \
-                         앱이 선언한 Contents 권한: '{app_contents}'. \
-                         앱 설정(Permissions → Contents)이 반드시 'Read and write'여야 하며, \
-                         변경 후 설치를 Uninstall→Install로 재승인해야 합니다."
-                    ));
-                }
-                Ok(())
-            }
+            ));
         }
+        // push 필드는 설치 토큰의 실제 Contents 쓰기와 다를 수 있으므로 게이트로
+        // 사용하지 않는다. 실제 쓰기 시도 결과로 판단한다.
+        Ok(())
     }
 
     /// GitHub 오류 응답에서 상태 코드 + 본문을 추출한다.
