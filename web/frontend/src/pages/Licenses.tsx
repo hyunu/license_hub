@@ -72,6 +72,10 @@ export function Licenses() {
   }
 
   const download = async (lic: License) => {
+    if (lic.certificates === 0) {
+      bad(`'${lic.license_id}'에 아직 발급된 인증서가 없습니다 — 먼저 발급하세요`)
+      return
+    }
     try {
       await downloadCertificate(lic.id, `${lic.license_id}.json`)
     } catch (err) {
@@ -185,7 +189,8 @@ export function Licenses() {
                 <td className="mono muted">{l.level === 3 && l.device_id ? 'bound' : l.certificates > 0 ? `${l.certificates}회` : '—'}</td>
                 <td className="actions">
                   <button className="btn small primary" onClick={() => issue(l)}>발급</button>
-                  <button className="btn small" onClick={() => download(l)}>다운로드</button>
+                  <button className="btn small" onClick={() => download(l)} disabled={l.certificates === 0}
+                    title={l.certificates === 0 ? '인증서를 먼저 발급하세요' : undefined}>다운로드</button>
                   <button className="btn small" onClick={() => downloadKey(l)}>공개키</button>
                   <button className={`btn small ${l.status === 'active' ? 'danger' : ''}`} onClick={() => toggleStatus(l)}>
                     {l.status === 'active' ? '폐기' : '복구'}
