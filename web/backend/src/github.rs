@@ -1,6 +1,7 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use time::OffsetDateTime;
 
 use crate::config::GitHubConfig;
@@ -22,6 +23,17 @@ struct InstallTokenResp {
 #[derive(Deserialize)]
 struct ContentResp {
     sha: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct InstallationReposResp {
+    repositories: Vec<InstallationRepo>,
+}
+
+#[derive(Deserialize)]
+struct InstallationRepo {
+    full_name: String,
+    permissions: HashMap<String, String>,
 }
 
 /// GitHub Repository 동기화 클라이언트.
@@ -79,10 +91,10 @@ impl GitHubClient {
         Ok(body.token)
     }
 
-    /// 설치 토큰이 대상 저장소에 접근 가능한지 확인한다.
-    /// 404는 "저장소가 없거나 앱이 설치되어 있지 않음"을 의미한다.
+    /// 설치 토큰이 대상 저장소에 접근 가능한지 + Contents 쓰기 권한이 있는지 확인.
+    /// /installation/repositories 는 설치 토큰의 "실제 유효 권한"을 반환한다.
     fn check_repo_access(&self, token: &str) -> Result<(), String> {
-        let url = format!("{API}/repos/{}/{}", self.config.owner, self.config.repo);
+        let url = format!("{API}/installation/repositories");
         let resp = self
             .client
             .get(&url)
@@ -90,17 +102,35 @@ impl GitHubClient {
             .header("Authorization", format!("Bearer {token}"))
             .send()
             .map_err(|e| format!("github repo check failed: {e}"))?;
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(format!(
-                "GitHub repository {}/{} is not accessible (404). \
-                 Check GITHUB_REPO and make sure the GitHub App is installed on that repository.",
-                self.config.owner, self.config.repo
-            ));
-        }
         if !resp.status().is_success() {
             return Err(format!("github repo check error: {}", resp.status()));
         }
-        Ok(())
+        let body: InstallationReposResp = resp
+            .json()
+            .map_err(|e| format!("github repo check parse: {e}"))?;
+
+        let target = format!("{}/{}", self.config.owner, self.config.repo);
+        match body.repositories.iter().find(|r| r.full_name == target) {
+            None => Err(format!(
+                "GitHub App이 저장소 '{target}'에 접근할 수 없습니다. \
+                 앱이 그 저장소에 설치되어 있는지 확인하세요."
+            )),
+            Some(repo) => {
+                let contents = repo
+                    .permissions
+                    .get("contents")
+                    .cloned()
+                    .unwrap_or_default();
+                if contents != "write" {
+                    return Err(format!(
+                        "GitHub App의 저장소 '{target}' Contents 유효 권한이 '{contents}'입니다. \
+                         'write'가 필요합니다. 앱 권한(Contents=Read and write) 변경 후 \
+                         설치를 재승인(Uninstall→Install)해야 합니다."
+                    ));
+                }
+                Ok(())
+            }
+        }
     }
 
     /// GitHub 오류 응답에서 상태 코드 + 본문을 추출한다.
