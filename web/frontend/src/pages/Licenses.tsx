@@ -3,7 +3,7 @@ import { api, downloadCertificate, type License } from '../api'
 
 const EMPTY_FORM = {
   license_id: '',
-  product: 'DXi',
+  product: '',
   version: '1.0.0',
   level: '1',
   holder: '',
@@ -122,7 +122,7 @@ export function Licenses() {
                 <input placeholder="자동 생성" value={form.license_id} onChange={(e) => set('license_id', e.target.value)} />
               </label>
               <label className="f">제품
-                <input value={form.product} onChange={(e) => set('product', e.target.value)} required />
+                <input value={form.product} onChange={(e) => set('product', e.target.value)} placeholder="제품명" required />
               </label>
               <label className="f">버전
                 <input value={form.version} onChange={(e) => set('version', e.target.value)} required />
