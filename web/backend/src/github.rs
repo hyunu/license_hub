@@ -245,12 +245,30 @@ impl GitHubClient {
                         .unwrap_or_default(),
                 )
             };
+            let repo_view = self.repo_view_status(&token);
             return Err(format!(
-                "github write error: {} [인증: {auth_mode}]",
+                "github write error: {} [인증: {auth_mode}] [동일토큰으로 저장소 조회: {repo_view}]",
                 self.error_detail(resp)
             ));
         }
         Ok(())
+    }
+
+    /// 같은 토큰으로 GET /repos/{owner}/{repo} 를 호출한 결과.
+    /// 200이면 토큰이 저장소를 볼 수 있음(그런데 쓰기 404), 404면 토큰이 저장소에
+    /// 접근 불가(스코프/값 문제).
+    fn repo_view_status(&self, token: &str) -> String {
+        let url = format!("{API}/repos/{}/{}", self.config.owner, self.config.repo);
+        match self
+            .client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+        {
+            Ok(r) => format!("{}", r.status()),
+            Err(e) => format!("err({e})"),
+        }
     }
 
     /// 앱이 선언한 권한(GET /app, 앱 JWT로 조회).
