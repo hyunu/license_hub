@@ -154,6 +154,31 @@ canonicalization은 다음을 보장해야 한다.
 
 구현 전에 JSON Canonicalization Scheme(JCS) 사용 여부를 확정하고, 모든 언어에서 동일한 Test Vector를 통과시켜야 한다.
 
+### 5.3 보호 목적과 체인 설계
+
+**목적**: 코어로직(라이브러리)이 승인된 응용SW A에서만 동작하게 하고, 코어를 복사해 무분별하게 다른 응용SW를 만드는 재사용을 막는다.
+
+**원칙**:
+- 라이선스(앱 정보)와 서명은 **한 인증서에 함께** 둔다. 분리하면 클라이언트가 둘을 결합해야 하고 위조 여지가 생긴다.
+- **공개키는 인증서에 넣지 않고 별도 신뢰 경로**로 배포한다. 인증서에 넣으면 공격자가 라이선스+서명+공개키를 함께 교체할 수 있기 때문이다.
+
+**X / Y 케이스**:
+
+| | X | Y |
+|---|---|---|
+| 내용 | `A설명`(제품명·버전·빌드해시) + K1 서명 | `A공개키` + K2 서명 |
+| 검증 키 | 코어 내장 K1 (분산 저장) | A에 배포된 CA 인증서(K2) |
+| 용도 | 응용SW 핵심로직 방어 | 응용SW 활성화 / 서브CA 승인 |
+
+- 케이스1 = X만, 케이스2 = Y만, 케이스3 = X+Y
+- X는 제품 정품성·코어 방어(제품 단위), Y는 설치/키 단위 활성화. "특정 설치/장치 전용"은 X만으로 불가능하며 L3 장치 바인딩이나 Y(설치 고유 키)와 조합해야 한다.
+
+**체인의 두 축**:
+1. **등급 체인** (`Certificate.children`): 응용SW 활성화(2차) → 코어로직 활성화(1차). 자식 인증서 하나라도 실패하면 전체 실패(`ChainInvalid`) → 코어로직 차단. `max_chain_depth`(기본 3).
+2. **키 체인** (루트 키 → 서명 키): 루트가 서명 키 공개키를 승인(키 인증서). 키 회전·위조 방지용. 현재는 미구현이며, 구현 시 `Certificate.public_key` 필드와 2단계 검증이 필요하다.
+
+**위협 모델**: 순수 클라이언트(오프라인)로는 **전체 설치본 복제를 막을 수 없다.** 클라이언트 방식이 막는 것은 (a) 라이선스 파일 단독 공유, (b) 코어로직의 다른 앱 재사용(무분별한 재사용)이다. 결정적 공격자(패치/우회)까지는 하드웨어 앵커(TPM)나 서버 활성화가 필요하다.
+
 ## 6. 서명 및 키 처리
 
 ### 6.1 알고리즘
@@ -169,28 +194,6 @@ canonicalization은 다음을 보장해야 한다.
 ### 6.2 Private Key 사용
 
 Core는 Private Key를 안전하게 보관하지 않는다. 발급 애플리케이션이 외부에서 키를 공급하고, Core는 서명 작업에 사용한다.
-
-### 6.3 내장 신뢰 공개키 (K1, 분산 저장)
-
-응용SW 핵심로직 방어(X) 용도의 신뢰 공개키는 평문 상수로 두지 않는다. `core/src/trusted.rs`가 32바이트 키를 4조각으로 쪼개 각 조각을 마스크(XOR)로 감싸고 저장 순서를 섞은 뒤, 사용 시점에만 재조립한다.
-
-- `trusted::trusted_public_key()`: 재조립 후 무결성 해시(`KEY_SHA256`)를 확인해 훼손 시 panic(fail closed)한다.
-- `gen_trusted_key` 예제: 새 K1 키 쌍을 생성하거나 주어진 공개키로 분산 상수를 출력한다. 개인키는 라이선스 서버의 `LICENSEHUB_SIGNING_KEY`로 설정하며 저장소에 커밋하지 않는다.
-- C ABI: `lh_trusted_public_key` / `lh_verify_trusted_certificate` 로 외부 언어에서 X 검증을 제공한다.
-
-보안 한계: 재조립 후 메모리에 키가 나타나므로 동적 분석으로 추출할 수 있다. 정적 패치의 난이도를 높이는 장치이며 절대적 보호는 아니다.
-
-### 6.4 호스트 특이점 대조 (X의 응용SW 바인딩)
-
-X(설명 인증서)가 "코어로직이 승인된 응용SW A에서만 동작"하도록 하기 위해, 코어는 호스트 앱이 제공한 특이점(제품명·버전)을 서명된 정보와 대조한다. `VerificationContext.product/version`을 채워 `verify`(및 `verify_trusted`)를 호출하면 불일치 시 `PolicyRejected`로 거부한다(fail closed).
-
-- 서명 검증: K1(내장 분산 키)로 X의 무결성 확인
-- 호스트 대조: `context.product/version` vs X의 서명된 `product/version`
-- 고유값 대조: 프로젝트 파일의 `product_id`(GUID 등)를 X의 `metadata["product_id"]`에 서명으로 포함하고, 호스트가 등록한 값과 대조. 불일치 시 `PolicyRejected`
-- 실행 파일 이름 대조: X의 `metadata["executable_name"]`과 호스트가 측정한 실행 파일 이름(`host_executable_name()`, 확장자 제거 basename)을 대조. 실행 파일 이름은 리빌드해도 불변이라 개발 무중단
-- 모듈 이름 대조: 응용SW 로직을 DLL/공유 라이브러리로 분리한 경우 `current_exe()`는 호스트 .exe를 반환하므로, **lh_core가 포함된 모듈**의 이름(`host_module_name()`: POSIX `dladdr`/Windows `GetModuleHandleEx`)으로 바인딩한다. 단독 exe면 exe 이름, DLL 로드면 그 DLL 이름
-- 개발 편의: 빌드해시를 쓰지 않으므로 리빌드와 무관. 버전을 생략하면 제품명만 대조해 개발 중 주버전 내 수정도 허용
-- 재사용 방지: 코어를 다른 앱 B에 임베드하면 B의 제품명/고유값/실행 파일 이름 ≠ X → 거부
 
 초기 운영 방식:
 
@@ -223,6 +226,45 @@ trait Signer {
     fn key_id(&self) -> &str;
 }
 ```
+
+### 6.3 내장 신뢰 공개키 (K1, 분산 저장)
+
+응용SW 핵심로직 방어(X) 용도의 신뢰 공개키는 평문 상수로 두지 않는다. `core/src/trusted.rs`가 32바이트 키를 4조각으로 쪼개 각 조각을 마스크(XOR)로 감싸고 저장 순서를 섞은 뒤, 사용 시점에만 재조립한다.
+
+- `trusted::trusted_public_key()`: 재조립 후 무결성 해시(`KEY_SHA256`)를 확인해 훼손 시 panic(fail closed)한다.
+- `trusted::verify_trusted(cert, ctx)`: **키를 함수 밖으로 노출하지 않고** 재조립 → 검증 → 파기한다. X 케이스는 이 경로를 사용해 키가 검증 순간에만 메모리에 존재한다.
+- 키 파기: 재조립 버퍼는 사용 직후 `zeroize`로 0으로 덮어쓴다. (`lh_trusted_public_key`/`lh_verify_trusted_certificate`도 동일)
+- `gen_trusted_key` 예제: 새 K1 키 쌍을 생성하거나 주어진 공개키로 분산 상수를 출력한다. 개인키는 라이선스 서버의 `LICENSEHUB_SIGNING_KEY`로 설정하며 저장소에 커밋하지 않는다.
+- C ABI: `lh_trusted_public_key` / `lh_verify_trusted_certificate` 로 외부 언어에서 X 검증을 제공한다.
+
+보안 한계: 재조립 후 검증 순간의 메모리 스냅샷에는 키가 잠깐 존재할 수 있어 동적 분석으로 추출 가능하다. 정적 분석·지속 보존을 막는 장치이며 절대적 보호는 아니다.
+
+### 6.4 호스트 특이점 대조 (X의 응용SW 바인딩)
+
+X(설명 인증서)가 "코어로직이 승인된 응용SW A에서만 동작"하도록 하기 위해, 코어는 호스트 앱이 제공한 특이점(제품명·버전)을 서명된 정보와 대조한다. `VerificationContext.product/version`을 채워 `verify`(및 `verify_trusted`)를 호출하면 불일치 시 `PolicyRejected`로 거부한다(fail closed).
+
+- 서명 검증: K1(내장 분산 키)로 X의 무결성 확인
+- 호스트 대조: `context.product/version` vs X의 서명된 `product/version`
+- 고유값 대조: 프로젝트 파일의 `product_id`(GUID 등)를 X의 `metadata["product_id"]`에 서명으로 포함하고, 호스트가 등록한 값과 대조. 불일치 시 `PolicyRejected`
+- 실행 파일 이름 대조: X의 `metadata["executable_name"]`과 호스트가 측정한 실행 파일 이름(`host_executable_name()`, 확장자 제거 basename)을 대조. 실행 파일 이름은 리빌드해도 불변이라 개발 무중단
+- 모듈 이름 대조: 응용SW 로직을 DLL/공유 라이브러리로 분리한 경우 `current_exe()`는 호스트 .exe를 반환하므로, **lh_core가 포함된 모듈**의 이름(`host_module_name()`: POSIX `dladdr`/Windows `GetModuleHandleEx`)으로 바인딩한다. 단독 exe면 exe 이름, DLL 로드면 그 DLL 이름
+- 개발 편의: 빌드해시를 쓰지 않으므로 리빌드와 무관. 버전을 생략하면 제품명만 대조해 개발 중 주버전 내 수정도 허용
+- 재사용 방지: 코어를 다른 앱 B에 임베드하면 B의 제품명/고유값/실행 파일 이름 ≠ X → 거부
+
+### 6.5 바인딩 정체성의 선택
+
+호스트 바인딩에 쓰는 "특이점"은 위협 모델과 개발 편의의 균형으로 결정한다.
+
+| 정체성 | 출처 | 리빌드 | 복사 내성 | 비고 |
+|---|---|---|---|---|
+| 제품명/버전 | 프로젝트 파일 | 불변 | 낮음(위장 가능) | 개발 무중단, 기본 |
+| `product_id`(GUID) | 프로젝트 파일 | 불변 | 낮음 | 앱 단위 구분 강화 |
+| 실행 파일 이름 | `current_exe()` | 불변 | 중간 | 단독 exe용 |
+| **모듈(DLL) 이름** | `dladdr`/`GetModuleHandleEx` | 불변 | 중간 | 응용SW 로직을 DLL로 분리 시 |
+| 설치 토큰 | 최초 실행 시 생성 | 불변 | 라이선스 단독 공유는 차단 | 플랫폼 독립, "설치 전용" |
+| 기기 ID | OS별 API | 불변 | 높음(하드웨어 귀속) | "장치 전용", OS별 구현 필요 |
+
+원칙: **순수 클라이언트로는 전체 설치본 복제를 막을 수 없다.** 클라이언트 바인딩이 막는 것은 "라이선스 파일 단독 공유" 또는 "코어로직의 다른 앱 재사용"까지다. 전체 복제까지 막으려면 하드웨어 앵커(TPM 등)나 서버 활성화가 필요하다.
 
 ## 7. 검증 파이프라인
 
@@ -278,6 +320,7 @@ verification_context
 
 - 현재 시각
 - 제품 및 버전
+- `product_id`(프로젝트 고유값), `executable_name`(실행 파일/모듈 이름) — X 호스트 바인딩
 - 현재 Device Binding 값
 - 서버 검증 결과
 - Blacklist/Revocation 결과
@@ -351,8 +394,11 @@ FFI 원칙:
 
 구현 현황:
 
-- 완료: Rust(`verify`), C ABI(`lh_verify_certificate`), C/C++ 헤더,
+- 완료: Rust(`verify`/`verify_trusted`), C ABI(`lh_verify_certificate`,
+  `lh_verify_trusted_certificate`, `lh_trusted_public_key`), C/C++ 헤더,
   C#, Python, Node.js — `bindings/` 참고
+- 완료: K1 내장 신뢰 공개키(분산 저장·zeroize), 호스트 바인딩 검증
+  (`product_id`/`executable_name`/모듈 이름)
 - 계획: Java/Kotlin, Go, Swift, WebAssembly
 
 Node.js는 `koffi` FFI를 통해 동일한 C ABI를 호출한다.
@@ -378,6 +424,8 @@ Node.js는 `koffi` FFI를 통해 동일한 C ABI를 호출한다.
 - Metadata 변경
 - 만료 및 미래 발급일
 - 제품·버전 불일치
+- `product_id`(고유값) 불일치
+- `executable_name`/모듈 이름 불일치
 - L1/L2/L3별 필수 필드
 - Device 불일치
 - Blacklist 및 Revocation 결과
