@@ -182,7 +182,7 @@ export function Licenses() {
                 <td>{l.holder}</td>
                 <td className="mono">{l.expires_at.slice(0, 10)}</td>
                 <td><span className={`status ${l.status}`}><span className="sq" />{l.status}</span></td>
-                <td className="mono muted">{l.level === 3 ? (l.device_id ? 'bound' : '—') : '—'}</td>
+                <td className="mono muted">{l.level === 3 && l.device_id ? 'bound' : l.certificates > 0 ? `${l.certificates}회` : '—'}</td>
                 <td className="actions">
                   <button className="btn small primary" onClick={() => issue(l)}>발급</button>
                   <button className="btn small" onClick={() => download(l)}>다운로드</button>

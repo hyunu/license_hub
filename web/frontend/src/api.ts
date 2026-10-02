@@ -18,6 +18,7 @@ export interface License {
   expires_at: string
   status: string
   created_at: string
+  certificates: number
 }
 
 export interface BlacklistEntry {

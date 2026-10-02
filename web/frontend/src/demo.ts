@@ -21,6 +21,7 @@ export const demoLicenses: License[] = [
     expires_at: '2027-01-01T00:00:00Z',
     status: 'active',
     created_at: now(),
+    certificates: 1,
   },
   {
     id: 2,
@@ -33,6 +34,7 @@ export const demoLicenses: License[] = [
     expires_at: '2027-01-01T00:00:00Z',
     status: 'active',
     created_at: now(),
+    certificates: 2,
   },
   {
     id: 3,
@@ -45,6 +47,7 @@ export const demoLicenses: License[] = [
     expires_at: '2026-06-01T00:00:00Z',
     status: 'blacklisted',
     created_at: now(),
+    certificates: 0,
   },
 ]
 
@@ -93,6 +96,7 @@ export function demoCreateLicense(body: Record<string, unknown>): License {
     expires_at: String(body.expires_at),
     status: 'active',
     created_at: now(),
+    certificates: 0,
   }
   demoLicenses.unshift(lic)
   demoAudit.unshift({ id: seq + 1000, actor: 'admin', action: 'license.create', target: lic.license_id, detail: null, created_at: now() })

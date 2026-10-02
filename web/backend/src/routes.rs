@@ -270,10 +270,12 @@ pub async fn list_licenses(
     let db = state.db.lock().unwrap();
     let mut stmt = match &q.status {
         Some(_) => db
-            .prepare("SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at FROM licenses WHERE status = ?1 ORDER BY id DESC")
+            .prepare(&format!(
+                "{LICENSE_SELECT} WHERE status = ?1 ORDER BY id DESC"
+            ))
             .map_err(|e| internal(&e.to_string()))?,
         None => db
-            .prepare("SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at FROM licenses ORDER BY id DESC")
+            .prepare(&format!("{LICENSE_SELECT} ORDER BY id DESC"))
             .map_err(|e| internal(&e.to_string()))?,
     };
     let rows = if let Some(status) = &q.status {
@@ -290,6 +292,9 @@ pub async fn list_licenses(
     Ok(Json(out))
 }
 
+const LICENSE_SELECT: &str = "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at, \
+(SELECT COUNT(*) FROM certificates WHERE certificates.license_id = licenses.license_id) FROM licenses";
+
 fn map_license(row: &rusqlite::Row) -> rusqlite::Result<License> {
     Ok(License {
         id: row.get(0)?,
@@ -303,6 +308,7 @@ fn map_license(row: &rusqlite::Row) -> rusqlite::Result<License> {
         status: row.get(8)?,
         metadata: row.get(9)?,
         created_at: row.get(10)?,
+        certificates: row.get(11)?,
     })
 }
 
@@ -368,7 +374,7 @@ pub async fn create_license(
     let db = state.db.lock().unwrap();
     let lic = db
         .query_row(
-            "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at FROM licenses WHERE license_id = ?1",
+            &format!("{LICENSE_SELECT} WHERE license_id = ?1"),
             params![license_id],
             map_license,
         )
@@ -432,7 +438,7 @@ pub async fn issue_certificate(
     let lic: License = {
         let db = state.db.lock().unwrap();
         db.query_row(
-            "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at FROM licenses WHERE id = ?1",
+            &format!("{LICENSE_SELECT} WHERE id = ?1"),
             params![id],
             map_license,
         )

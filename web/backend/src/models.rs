@@ -21,6 +21,7 @@ pub struct License {
     pub status: String,
     pub metadata: Option<String>,
     pub created_at: String,
+    pub certificates: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
