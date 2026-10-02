@@ -23,6 +23,22 @@ use zeroize::Zeroize;
 
 pub mod trusted;
 
+/// 현재 프로세스(호스트 앱)의 실행 파일 이름을 반환한다.
+///
+/// 확장자를 제거한 basename을 돌려주므로 Windows(`app.exe`)·Linux·macOS
+/// 어디서나 같은 값이 된다. 실행 파일 이름은 리빌드해도 불변이라 개발 중
+/// 바인딩 검증이 깨지지 않는다. 실행 경로를 얻을 수 없는 환경에서는
+/// `None`을 반환한다.
+pub fn host_executable_name() -> Option<String> {
+    let path = std::env::current_exe().ok()?;
+    let name = path.file_name()?.to_str()?.to_string();
+    Some(
+        name.rsplit_once('.')
+            .map(|(stem, _)| stem.to_string())
+            .unwrap_or(name),
+    )
+}
+
 // 인증서 구조를 변경할 때 버전을 올린다. 검증기는 알 수 없는 버전을
 // 보수적으로 거부하여 새 형식을 구버전 Client가 잘못 해석하지 않게 한다.
 const CURRENT_SCHEMA_VERSION: u32 = 1;
@@ -348,6 +364,10 @@ pub struct VerificationContext {
     /// 설정된 경우 인증서 metadata["product_id"]와 일치해야 한다.
     /// 프로젝트 파일의 고유값(GUID 등)으로 앱 단위 바인딩을 강화한다.
     pub product_id: Option<String>,
+    /// 설정된 경우 인증서 metadata["executable_name"]과 일치해야 한다.
+    /// 실행 파일 이름으로 앱 단위 바인딩을 강화한다. `host_executable_name()`
+    /// 으로 실제 실행 파일 이름을 측정해 채울 수 있다.
+    pub executable_name: Option<String>,
     /// L3 검증에 사용할 현재 장치의 원본 ID.
     pub device_id: Option<String>,
     /// L2/L3 서버 검증 결과.
@@ -374,6 +394,7 @@ impl Default for VerificationContext {
             product: None,
             version: None,
             product_id: None,
+            executable_name: None,
             device_id: None,
             server_status: None,
             blacklisted: false,
@@ -592,6 +613,19 @@ fn verify_at_depth(
             return Err(VerificationError::PolicyRejected);
         }
     }
+    // 실행 파일 이름이 설정되면 인증서의 서명된 metadata["executable_name"]과
+    // 비교한다. 호스트가 측정한 실제 실행 파일 이름과 서명 정보를 대조해
+    // "코어로직이 이 앱의 실행 파일에서만 동작"함을 강제한다.
+    if let Some(exe) = context.executable_name.as_deref() {
+        let cert_exe = certificate
+            .metadata
+            .get("executable_name")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if exe != cert_exe {
+            return Err(VerificationError::PolicyRejected);
+        }
+    }
     // 등급 필드와 부가 필드의 조합을 확인한다. 예를 들어 L1에 server나
     // device 정보가 붙어 있으면 발급 정책 위반으로 간주한다.
     match certificate.level {
@@ -798,6 +832,7 @@ struct FfiVerificationContext {
     product: Option<String>,
     version: Option<String>,
     product_id: Option<String>,
+    executable_name: Option<String>,
     device_id: Option<String>,
     server_status: Option<String>,
     #[serde(default)]
@@ -826,6 +861,7 @@ impl FfiVerificationContext {
             product: self.product,
             version: self.version,
             product_id: self.product_id,
+            executable_name: self.executable_name,
             device_id: self.device_id,
             server_status,
             blacklisted: self.blacklisted,

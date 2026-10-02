@@ -290,4 +290,45 @@ mod tests {
             Err(VerificationError::PolicyRejected)
         ));
     }
+
+    #[test]
+    fn executable_name_is_compared_against_signed_info() {
+        use crate::{
+            CertificateRequest, Issuer, VerificationContext, VerificationError,
+            host_executable_name, verify,
+        };
+
+        // 실행 파일 이름을 서명 데이터로 포함해 발급한다.
+        let signing = SigningKey::generate(&mut OsRng);
+        let issuer = Issuer::from_bytes("k1", &signing.to_bytes());
+        let x = issuer
+            .issue(
+                CertificateRequest::new("EX-1", 1, "ExodusSimEngine", "1.0.0")
+                    .metadata("executable_name", serde_json::json!("ExodusSimEngine")),
+            )
+            .unwrap();
+        let key = signing.verifying_key();
+
+        // 호스트가 측정한 실행 파일 이름과 일치 → 유효
+        let ctx = VerificationContext {
+            executable_name: Some("ExodusSimEngine".into()),
+            ..Default::default()
+        };
+        assert!(verify(&x, &key, &ctx).is_ok());
+
+        // 다른 실행 파일 이름이면 거부
+        let ctx_other = VerificationContext {
+            executable_name: Some("OtherBinary".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            verify(&x, &key, &ctx_other),
+            Err(VerificationError::PolicyRejected)
+        ));
+
+        // host_executable_name()이 실제 측정값(확장자 제거 basename)을 반환한다.
+        let measured = host_executable_name().expect("current_exe available");
+        assert!(!measured.is_empty());
+        assert!(!measured.contains('.'));
+    }
 }
