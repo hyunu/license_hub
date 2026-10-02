@@ -19,7 +19,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: web/deploy/ssh/bootstrap.sh
+          source: web/deploy/ssh/bootstrap.sh,appkey.b64
           target: ~/licensehub-setup
 
       - name: Prepare GitHub App key (base64)
@@ -27,10 +27,9 @@ jobs:
           LH_KEY: ${{ secrets.LH_GITHUB_APP_PRIVATE_KEY }}
         run: |
           if [ -n "$LH_KEY" ]; then
-            # 멀티라인 PEM을 base64(단일 줄)로 만들어 전달 — 줄바꿈 손실 방지
-            printf '%s' "$LH_KEY" | base64 > /tmp/lh_appkey.b64
-            echo "LH_APP_KEY_B64=$(cat /tmp/lh_appkey.b64)" >> "$GITHUB_ENV"
-            echo "app key encoded (base64 bytes: $(wc -c < /tmp/lh_appkey.b64))"
+            # 멀티라인 PEM을 base64(단일 줄)로 만들어 파일로 저장 → scp로 전달
+            printf '%s' "$LH_KEY" | base64 > ./appkey.b64
+            echo "appkey.b64 written (bytes: $(wc -c < ./appkey.b64))"
           else
             echo "WARNING: LH_GITHUB_APP_PRIVATE_KEY is EMPTY"
           fi
@@ -42,7 +41,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: LICENSEHUB_SIGNING_KEY,LICENSEHUB_VERIFY_URL,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD,PROXY_DOMAIN,GITHUB_REPO,GITHUB_APP_ID,GITHUB_INSTALLATION_ID,LH_APP_KEY_B64
+          envs: LICENSEHUB_SIGNING_KEY,LICENSEHUB_VERIFY_URL,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD,PROXY_DOMAIN,GITHUB_REPO,GITHUB_APP_ID,GITHUB_INSTALLATION_ID
           script: |
             set -e
             sudo mkdir -p /opt/licensehub/data /opt/licensehub/bin /opt/licensehub/frontend
@@ -62,13 +61,13 @@ jobs:
             LICENSEHUB_ADMIN_PASSWORD=${LICENSEHUB_ADMIN_PASSWORD}
             EOF
 
-            # GitHub App 연동 (선택): base64로 받은 PEM을 디코드해 파일로 저장
-            if [ -n "${LH_APP_KEY_B64:-}" ]; then
-              echo "${LH_APP_KEY_B64}" | base64 -d | sudo tee /opt/licensehub/app.pem >/dev/null
+            # GitHub App 연동 (선택): scp로 전달된 base64를 디코드해 app.pem 저장
+            if [ -s "$HOME/licensehub-setup/appkey.b64" ]; then
+              base64 -d "$HOME/licensehub-setup/appkey.b64" | sudo tee /opt/licensehub/app.pem >/dev/null
               sudo chmod 600 /opt/licensehub/app.pem
               echo "--- app.pem 크기: $(sudo wc -c < /opt/licensehub/app.pem) bytes ---"
             else
-              echo "--- 경고: GitHub App private key가 비어 있어 app.pem을 만들지 않음 ---"
+              echo "--- 경고: appkey.b64 없음 — app.pem 미생성 ---"
             fi
             sudo tee -a /opt/licensehub/.env >/dev/null <<EOF
             GITHUB_REPO=${GITHUB_REPO}
@@ -101,4 +100,3 @@ jobs:
           GITHUB_REPO: ${{ secrets.LH_GITHUB_REPO }}
           GITHUB_APP_ID: ${{ secrets.LH_GITHUB_APP_ID }}
           GITHUB_INSTALLATION_ID: ${{ secrets.LH_GITHUB_INSTALLATION_ID }}
-          LH_APP_KEY_B64: ${{ env.LH_APP_KEY_B64 }}
