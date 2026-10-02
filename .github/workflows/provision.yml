@@ -19,17 +19,25 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: web/deploy/ssh/bootstrap.sh,appkey.b64
+          source: web/deploy/ssh
           target: ~/licensehub-setup
 
       - name: Prepare GitHub App key (base64)
         env:
           LH_KEY: ${{ secrets.LH_GITHUB_APP_PRIVATE_KEY }}
         run: |
+          mkdir -p web/deploy/ssh
           if [ -n "$LH_KEY" ]; then
-            # 멀티라인 PEM을 base64(단일 줄)로 만들어 파일로 저장 → scp로 전달
-            printf '%s' "$LH_KEY" | base64 > ./appkey.b64
-            echo "appkey.b64 written (bytes: $(wc -c < ./appkey.b64))"
+            FIRST=$(printf '%s\n' "$LH_KEY" | head -1)
+            SIZE=$(printf '%s' "$LH_KEY" | wc -c)
+            echo "key first line: ${FIRST}"
+            echo "key size: ${SIZE} bytes"
+            printf '%s' "$LH_KEY" | base64 > web/deploy/ssh/appkey.b64
+            echo "appkey.b64 written (bytes: $(wc -c < web/deploy/ssh/appkey.b64))"
+            case "$FIRST" in
+              -----BEGIN*) echo "OK: PEM 형식 확인" ;;
+              *) echo "ERROR: 시크릿 값이 PEM 형식이 아닙니다. .pem 파일 내용을 넣어야 합니다." ;;
+            esac
           else
             echo "WARNING: LH_GITHUB_APP_PRIVATE_KEY is EMPTY"
           fi
@@ -62,8 +70,8 @@ jobs:
             EOF
 
             # GitHub App 연동 (선택): scp로 전달된 base64를 디코드해 app.pem 저장
-            if [ -s "$HOME/licensehub-setup/appkey.b64" ]; then
-              base64 -d "$HOME/licensehub-setup/appkey.b64" | sudo tee /opt/licensehub/app.pem >/dev/null
+            if [ -s "$HOME/licensehub-setup/web/deploy/ssh/appkey.b64" ]; then
+              base64 -d "$HOME/licensehub-setup/web/deploy/ssh/appkey.b64" | sudo tee /opt/licensehub/app.pem >/dev/null
               sudo chmod 600 /opt/licensehub/app.pem
               echo "--- app.pem 크기: $(sudo wc -c < /opt/licensehub/app.pem) bytes ---"
             else
