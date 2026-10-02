@@ -69,7 +69,7 @@ SSH 접근이 있으면 GitHub Actions로 자동 배포·환경 구축이 가능
 `backend/.env` 에 설정:
 
 ```sh
-GITHUB_REPO=owner/licensehub-repo
+GITHUB_REPO=owner/licensehub-distribution
 GITHUB_APP_ID=123456
 GITHUB_INSTALLATION_ID=654321
 GITHUB_APP_PRIVATE_KEY_PATH=/path/to/app.pem
