@@ -4,9 +4,8 @@ name: Deploy Backend to Oracle
 # - 수동: Actions 탭 → Deploy Backend to Oracle → Run workflow
 # - 자동: main 브랜치에서 core/ 또는 web/backend/ 변경 push 시
 #
-# 인스턴스 CPU 아키텍처를 감지해 cross(Docker)로 aarch64/x86_64 musl 정적
-# 바이너리를 빌드한다. musl 정적 바이너리는 glibc 버전·배포판과 무관하게
-# 실행된다.
+# 인스턴스는 Oracle Linux 9.8 aarch64(ARM). cross(Docker)로 aarch64 musl
+# 정적 바이너리를 빌드해 glibc·배포판과 무관하게 실행한다.
 
 on:
   workflow_dispatch:
@@ -24,20 +23,6 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Detect instance architecture
-        id: arch
-        env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        run: |
-          echo "$SSH_KEY" > /tmp/lh_key
-          chmod 600 /tmp/lh_key
-          ARCH=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -i /tmp/lh_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "uname -m")
-          echo "arch=${ARCH}" >> "$GITHUB_OUTPUT"
-          echo "Detected instance arch: ${ARCH}"
-          rm -f /tmp/lh_key
-
       - name: Install cross
         run: |
           curl -fsSL https://github.com/cross-rs/cross/releases/latest/download/cross-x86_64-unknown-linux-musl.tar.gz -o /tmp/cross.tgz
@@ -45,22 +30,16 @@ jobs:
           sudo mv /tmp/cross /usr/local/bin/
           cross --version
 
-      - name: Build backend (cross, musl static)
+      - name: Build backend (cross, aarch64 musl)
         run: |
-          if [ "${ARCH}" = "aarch64" ] || [ "${ARCH}" = "arm64" ]; then
-            TARGET=aarch64-unknown-linux-musl
-          else
-            TARGET=x86_64-unknown-linux-musl
-          fi
-          echo "==> building ${TARGET}"
           # path 의존성(../../core)이 cross 컨테이너에 마운트되도록 루트 워크스페이스 임시 생성
           cat > Cargo.toml <<'EOF'
           [workspace]
           resolver = "2"
           members = ["web/backend"]
           EOF
-          cross build --workspace --release --target "${TARGET}"
-          BIN=$(find . -path "*${TARGET}/release/licensehub-web-backend" -type f | head -1)
+          cross build --workspace --release --target aarch64-unknown-linux-musl
+          BIN=$(find . -path "*aarch64-unknown-linux-musl/release/licensehub-web-backend" -type f | head -1)
           echo "binary: ${BIN}"
           cp "${BIN}" ./licensehub-web-backend.musl
 
