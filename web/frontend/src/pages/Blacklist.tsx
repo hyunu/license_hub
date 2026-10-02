@@ -48,10 +48,12 @@ export function Blacklist() {
         {error && <div className="alert bad">{error}</div>}
 
         <div className="toolbar">
+          <div className="left">
+            <span className="count">{entries.length}건</span>
+          </div>
           <button className="btn" onClick={() => setShowForm((v) => !v)}>
             {showForm ? '닫기' : 'Blacklist 추가'}
           </button>
-          <span className="count">{entries.length}건</span>
         </div>
 
         {showForm && (

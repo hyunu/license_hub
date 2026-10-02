@@ -100,19 +100,21 @@ export function Licenses() {
         {error && <div className="alert bad">{error}</div>}
 
         <div className="toolbar">
+          <div className="left">
+            <label className="f">
+              상태
+              <select value={filter} onChange={(e) => { setFilter(e.target.value); load(e.target.value) }}>
+                <option value="">전체</option>
+                <option value="active">active</option>
+                <option value="revoked">revoked</option>
+                <option value="blacklisted">blacklisted</option>
+              </select>
+            </label>
+            <span className="count">{licenses.length}건</span>
+          </div>
           <button className="btn" onClick={() => setShowForm((v) => !v)}>
             {showForm ? '닫기' : '새 라이선스'}
           </button>
-          <label className="f">
-            상태
-            <select value={filter} onChange={(e) => { setFilter(e.target.value); load(e.target.value) }}>
-              <option value="">전체</option>
-              <option value="active">active</option>
-              <option value="revoked">revoked</option>
-              <option value="blacklisted">blacklisted</option>
-            </select>
-          </label>
-          <span className="count">{licenses.length}건</span>
         </div>
 
         {showForm && (

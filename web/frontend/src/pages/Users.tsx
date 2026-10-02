@@ -39,10 +39,12 @@ export function Users() {
         {error && <div className="alert bad">{error}</div>}
 
         <div className="toolbar">
+          <div className="left">
+            <span className="count">{users.length}명</span>
+          </div>
           <button className="btn" onClick={() => setShowForm((v) => !v)}>
             {showForm ? '닫기' : '사용자 추가'}
           </button>
-          <span className="count">{users.length}명</span>
         </div>
 
         {showForm && (

@@ -57,7 +57,7 @@ export function Sync() {
           </table>
         </section>
 
-        <div className="toolbar">
+        <div className="toolbar end">
           <button className="btn primary" disabled={!configured || busy} onClick={() => run(api.syncAll, '전체 동기화')}>전체 동기화</button>
           <button className="btn" disabled={!configured || busy} onClick={() => run(api.syncCertificates, '인증서')}>인증서</button>
           <button className="btn" disabled={!configured || busy} onClick={() => run(api.syncBlacklist, 'Blacklist')}>Blacklist</button>
