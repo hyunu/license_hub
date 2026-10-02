@@ -186,7 +186,10 @@ impl GitHubClient {
     /// Repository의 한 파일을 새로 쓰거나 갱신한다.
     fn write_file(&self, path: &str, content_b64: &str, message: &str) -> Result<(), String> {
         let token = self.auth_token()?;
-        self.check_repo_access(&token)?;
+        // /installation/repositories 는 GitHub App 전용이므로 PAT 모드에선 생략.
+        if !self.is_pat_mode() {
+            self.check_repo_access(&token)?;
+        }
         let repo_path = format!("{}/{}/{}", self.config.owner, self.config.repo, path);
 
         let get_url = format!("{API}/repos/{repo_path}");
