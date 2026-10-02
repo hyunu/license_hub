@@ -1,39 +1,38 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, type BlacklistEntry } from '../api'
+import { Toasts, useToasts } from '../toast'
 
 export function Blacklist() {
   const [entries, setEntries] = useState<BlacklistEntry[]>([])
   const [licenseId, setLicenseId] = useState('')
   const [reason, setReason] = useState('')
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const { toasts, ok, bad } = useToasts()
   const [showForm, setShowForm] = useState(false)
 
-  const load = () => api.blacklist().then(setEntries).catch((e) => setError(String(e)))
+  const load = () => api.blacklist().then(setEntries).catch((e) => bad(String(e)))
   useEffect(() => { load() }, [])
 
   const add = async (e: FormEvent) => {
     e.preventDefault()
-    setError('')
     try {
       await api.addBlacklist({ license_id: licenseId, reason })
-      setNotice(`Blacklist 추가: ${licenseId}`)
+      ok(`Blacklist 추가: ${licenseId}`)
       setLicenseId('')
       setReason('')
       setShowForm(false)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'add failed')
+      bad(err instanceof Error ? err.message : 'add failed')
     }
   }
 
   const remove = async (licenseId: string) => {
     try {
       await api.removeBlacklist(licenseId)
-      setNotice(`Blacklist 제거: ${licenseId}`)
+      ok(`Blacklist 제거: ${licenseId}`)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'remove failed')
+      bad(err instanceof Error ? err.message : 'remove failed')
     }
   }
 
@@ -44,9 +43,6 @@ export function Blacklist() {
         <span className="ctx">폐기 · 회수된 라이선스 명부</span>
       </header>
       <div className="content">
-        {notice && <div className="alert ok">{notice}</div>}
-        {error && <div className="alert bad">{error}</div>}
-
         <div className="toolbar">
           <div className="left">
             <span className="count">{entries.length}건</span>
@@ -91,6 +87,7 @@ export function Blacklist() {
           </tbody>
         </table>
       </div>
+      <Toasts toasts={toasts} />
     </div>
   )
 }

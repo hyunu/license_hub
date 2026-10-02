@@ -105,6 +105,21 @@ a { color: inherit; }
 }
 .toggle-btn:hover { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 
+/* 자동으로 사라지는 토스트 */
+.toasts {
+  position: fixed; top: 14px; right: 18px; z-index: 60;
+  display: flex; flex-direction: column; gap: 8px; max-width: 340px;
+}
+.toast {
+  border: 1px solid var(--line-strong); border-left: 3px solid var(--warn);
+  background: var(--panel); padding: 10px 14px; font-size: 13px;
+  border-radius: 2px; box-shadow: 0 2px 6px rgba(0,0,0,.08);
+  animation: toast-in .15s ease;
+}
+.toast.ok { border-left-color: var(--ok); }
+.toast.bad { border-left-color: var(--bad); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
 .sidebar .foot { border-top: 1px solid var(--line); padding: 12px 18px; font-size: 12px; color: var(--muted); }
 .sidebar .foot .mono { font: 11px var(--mono); margin-bottom: 8px; }
 .sidebar .foot .who { display: flex; justify-content: space-between; align-items: center; }

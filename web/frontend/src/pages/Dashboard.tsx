@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type AuditEntry, type License, type Stats } from '../api'
+import { Toasts, useToasts } from '../toast'
 
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [licenses, setLicenses] = useState<License[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
-  const [error, setError] = useState('')
+  const { toasts, bad } = useToasts()
 
   useEffect(() => {
-    api.stats().then(setStats).catch((e) => setError(String(e)))
+    api.stats().then(setStats).catch((e) => bad(String(e)))
     api.licenses().then((l) => setLicenses(l.slice(0, 10))).catch(() => {})
     api.audit().then((a) => setAudit(a.slice(0, 8))).catch(() => {})
   }, [])
@@ -31,8 +32,6 @@ export function Dashboard() {
       </header>
 
       <div className="content">
-        {error && <div className="alert bad">{error}</div>}
-
         <section className="sec">
           <div className="stats">
             {rows.map(([k, v]) => (
@@ -97,6 +96,7 @@ export function Dashboard() {
           </table>
         </section>
       </div>
+      <Toasts toasts={toasts} />
     </div>
   )
 }

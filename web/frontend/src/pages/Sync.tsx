@@ -1,26 +1,24 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { Toasts, useToasts } from '../toast'
 
 export function Sync() {
   const [configured, setConfigured] = useState(false)
   const [repo, setRepo] = useState<string | null>(null)
-  const [notice, setNotice] = useState('')
-  const [error, setError] = useState('')
+  const { toasts, ok, bad } = useToasts()
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    api.syncStatus().then((s) => { setConfigured(s.configured); setRepo(s.repo) }).catch((e) => setError(String(e)))
+    api.syncStatus().then((s) => { setConfigured(s.configured); setRepo(s.repo) }).catch((e) => bad(String(e)))
   }, [])
 
   const run = async (action: () => Promise<unknown>, label: string) => {
     setBusy(true)
-    setError('')
-    setNotice('')
     try {
       const res = await action()
-      setNotice(`${label} 완료: ${JSON.stringify(res)}`)
+      ok(`${label} 완료: ${JSON.stringify(res)}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : `${label} 실패`)
+      bad(err instanceof Error ? err.message : `${label} 실패`)
     } finally {
       setBusy(false)
     }
@@ -40,8 +38,6 @@ export function Sync() {
             GitHub App이 구성되지 않았습니다. <span className="mono">GITHUB_REPO · GITHUB_APP_ID · GITHUB_INSTALLATION_ID · GITHUB_APP_PRIVATE_KEY</span> 설정 필요
           </div>
         )}
-        {notice && <div className="alert ok">{notice}</div>}
-        {error && <div className="alert bad">{error}</div>}
 
         <section className="sec" style={{ marginTop: 20 }}>
           <div className="sec-head">
@@ -64,6 +60,7 @@ export function Sync() {
           <button className="btn" disabled={!configured || busy} onClick={() => run(api.syncPublicKey, '공개키')}>공개키</button>
         </div>
       </div>
+      <Toasts toasts={toasts} />
     </div>
   )
 }

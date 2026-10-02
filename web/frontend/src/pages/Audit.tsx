@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api, type AuditEntry } from '../api'
+import { Toasts, useToasts } from '../toast'
 
 export function Audit() {
   const [entries, setEntries] = useState<AuditEntry[]>([])
-  const [error, setError] = useState('')
+  const { toasts, bad } = useToasts()
 
   useEffect(() => {
-    api.audit().then(setEntries).catch((e) => setError(String(e)))
+    api.audit().then(setEntries).catch((e) => bad(String(e)))
   }, [])
 
   return (
@@ -16,7 +17,6 @@ export function Audit() {
         <span className="ctx">발급 · 폐기 · Blacklist · 로그인 기록 (최근 200건)</span>
       </header>
       <div className="content">
-        {error && <div className="alert bad">{error}</div>}
         <table className="ledger">
           <thead>
             <tr><th>시각</th><th>작업자</th><th>동작</th><th>대상</th><th>상세</th></tr>
@@ -37,6 +37,7 @@ export function Audit() {
           </tbody>
         </table>
       </div>
+      <Toasts toasts={toasts} />
     </div>
   )
 }

@@ -6,7 +6,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use licensehub_core::{CertificateRequest, Issuer};
 use pkcs8::{EncodePublicKey, LineEnding};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -194,24 +194,39 @@ pub async fn download_public_key(State(state): State<Arc<AppState>>) -> Result<R
     Ok((hdrs, pem).into_response())
 }
 
-/// 특정 라이선스의 최신 인증서가 서명될 때 사용한 공개키를 반환한다.
+/// 라이선스가 사용한 공개키를 (key_id, pem) 형태로 반환한다.
 /// 발급 시 certificates.public_key 에 보존해 두므로, 개인키가 교체되어도
-/// 이전 인증서의 검증 공개키를 추출할 수 있다.
+/// 이전 인증서의 검증 공개키를 추출할 수 있다. 이력에 공개키가 없는
+/// (이전 버전에서 발급된) 인증서는 현재 서명 키의 공개키로 대체한다.
+fn license_public_key(state: &AppState, license_id: &str) -> Result<(String, String), ApiError> {
+    let stored: Option<(String, String)> = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT key_id, public_key FROM certificates
+             WHERE license_id = ?1 ORDER BY id DESC LIMIT 1",
+            params![license_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| internal(&e.to_string()))?
+    };
+    if let Some((key_id, public_key)) = stored.filter(|(_, p)| !p.is_empty()) {
+        return Ok((key_id, public_key));
+    }
+    let pem = state
+        .issuer
+        .verifying_key()
+        .to_public_key_pem(LineEnding::LF)
+        .map_err(|e| internal(&e.to_string()))?;
+    Ok((state.issuer.key_id().to_string(), pem))
+}
+
+/// 특정 라이선스의 최신 인증서가 서명될 때 사용한 공개키를 반환한다.
 pub async fn certificate_public_key(
     State(state): State<Arc<AppState>>,
     Path(license_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let (key_id, public_key): (String, String) = {
-        let db = state.db.lock().unwrap();
-        db.query_row(
-            "SELECT key_id, public_key FROM certificates
-             WHERE license_id = ?1 AND public_key IS NOT NULL
-             ORDER BY id DESC LIMIT 1",
-            params![license_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .map_err(|_| not_found("no certificate with recorded public key"))?
-    };
+    let (key_id, public_key) = license_public_key(&state, &license_id)?;
     Ok(Json(json!({
         "license_id": license_id,
         "key_id": key_id,
@@ -224,17 +239,7 @@ pub async fn download_certificate_public_key(
     State(state): State<Arc<AppState>>,
     Path(license_id): Path<String>,
 ) -> Result<Response, ApiError> {
-    let public_key: String = {
-        let db = state.db.lock().unwrap();
-        db.query_row(
-            "SELECT public_key FROM certificates
-             WHERE license_id = ?1 AND public_key IS NOT NULL
-             ORDER BY id DESC LIMIT 1",
-            params![license_id],
-            |r| r.get(0),
-        )
-        .map_err(|_| not_found("no certificate with recorded public key"))?
-    };
+    let (_, public_key) = license_public_key(&state, &license_id)?;
     let mut hdrs = HeaderMap::new();
     hdrs.insert(
         header::CONTENT_TYPE,

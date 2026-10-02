@@ -139,7 +139,7 @@ function Layout() {
           title={collapsed ? '펼치기' : '접기'}
         >
           <Icon>
-            {collapsed ? <path d="M10 3L6 8l4 5" /> : <path d="M6 3l4 5-4 5" />}
+            {collapsed ? <path d="M6 3l4 5-4 5" /> : <path d="M10 3L6 8l4 5" />}
           </Icon>
         </button>
       </aside>

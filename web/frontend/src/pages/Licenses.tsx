@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, downloadCertificate, downloadLicensePublicKey, type License } from '../api'
+import { Toasts, useToasts } from '../toast'
 
 const EMPTY_FORM = {
   license_id: '',
@@ -17,8 +18,7 @@ export function Licenses() {
   const [filter, setFilter] = useState('')
   const [form, setForm] = useState(EMPTY_FORM)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const { toasts, ok, bad } = useToasts()
   const [showForm, setShowForm] = useState(false)
   const [certView, setCertView] = useState<{ license: string; cert: Record<string, unknown> } | null>(null)
 
@@ -26,7 +26,7 @@ export function Licenses() {
     api
       .licenses(status)
       .then(setLicenses)
-      .catch((e) => setError(String(e)))
+      .catch((e) => bad(String(e)))
   }
   useEffect(() => {
     load()
@@ -36,7 +36,6 @@ export function Licenses() {
 
   const create = async (e: FormEvent) => {
     e.preventDefault()
-    setError('')
     setBusy(true)
     try {
       const body: Record<string, unknown> = {
@@ -50,26 +49,25 @@ export function Licenses() {
       if (form.device_id) body.device_id = form.device_id
       if (form.metadata.trim()) body.metadata = form.metadata.trim()
       const created = await api.createLicense(body)
-      setNotice(`라이선스 ${created.license_id} 생성됨`)
+      ok(`라이선스 ${created.license_id} 생성됨`)
       setForm(EMPTY_FORM)
       setShowForm(false)
       load(filter)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'create failed')
+      bad(err instanceof Error ? err.message : 'create failed')
     } finally {
       setBusy(false)
     }
   }
 
   const issue = async (lic: License) => {
-    setError('')
     try {
       const res = await api.issue(lic.id)
       setCertView({ license: lic.license_id, cert: res.certificate })
-      setNotice(`인증서 ${res.certificate_id} 발급됨`)
+      ok(`인증서 ${res.certificate_id} 발급됨`)
       load(filter)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'issue failed')
+      bad(err instanceof Error ? err.message : 'issue failed')
     }
   }
 
@@ -77,24 +75,26 @@ export function Licenses() {
     try {
       await downloadCertificate(lic.id, `${lic.license_id}.json`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'download failed')
+      bad(err instanceof Error ? err.message : 'download failed')
     }
   }
 
   const downloadKey = async (lic: License) => {
     try {
       await downloadLicensePublicKey(lic.license_id)
+      ok(`공개키 다운로드됨 — ${lic.license_id}-public-key.pem`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'public key download failed')
+      bad(err instanceof Error ? err.message : 'public key download failed')
     }
   }
 
   const toggleStatus = async (lic: License) => {
     try {
       await api.setStatus(lic.id, lic.status === 'active' ? 'revoked' : 'active')
+      ok(lic.status === 'active' ? `라이선스 ${lic.license_id} 폐기됨` : `라이선스 ${lic.license_id} 복구됨`)
       load(filter)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed')
+      bad(err instanceof Error ? err.message : 'failed')
     }
   }
 
@@ -106,9 +106,6 @@ export function Licenses() {
       </header>
 
       <div className="content">
-        {notice && <div className="alert ok">{notice}</div>}
-        {error && <div className="alert bad">{error}</div>}
-
         <div className="toolbar">
           <div className="left">
             <label className="f">
@@ -209,6 +206,7 @@ export function Licenses() {
           </section>
         )}
       </div>
+      <Toasts toasts={toasts} />
     </div>
   )
 }

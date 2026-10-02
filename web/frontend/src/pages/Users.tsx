@@ -1,30 +1,29 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, type User } from '../api'
+import { Toasts, useToasts } from '../toast'
 
 export function Users() {
   const [users, setUsers] = useState<User[]>([])
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('admin')
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const { toasts, ok, bad } = useToasts()
   const [showForm, setShowForm] = useState(false)
 
-  const load = () => api.users().then(setUsers).catch((e) => setError(String(e)))
+  const load = () => api.users().then(setUsers).catch((e) => bad(String(e)))
   useEffect(() => { load() }, [])
 
   const create = async (e: FormEvent) => {
     e.preventDefault()
-    setError('')
     try {
       await api.createUser({ username, password, role })
-      setNotice(`사용자 ${username} 생성됨`)
+      ok(`사용자 ${username} 생성됨`)
       setUsername('')
       setPassword('')
       setShowForm(false)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'create failed')
+      bad(err instanceof Error ? err.message : 'create failed')
     }
   }
 
@@ -35,9 +34,6 @@ export function Users() {
         <span className="ctx">관리자 · 운영자 계정</span>
       </header>
       <div className="content">
-        {notice && <div className="alert ok">{notice}</div>}
-        {error && <div className="alert bad">{error}</div>}
-
         <div className="toolbar">
           <div className="left">
             <span className="count">{users.length}명</span>
@@ -85,6 +81,7 @@ export function Users() {
           </tbody>
         </table>
       </div>
+      <Toasts toasts={toasts} />
     </div>
   )
 }
