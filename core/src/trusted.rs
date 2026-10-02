@@ -330,5 +330,11 @@ mod tests {
         let measured = host_executable_name().expect("current_exe available");
         assert!(!measured.is_empty());
         assert!(!measured.contains('.'));
+
+        // host_module_name()도 비어있지 않은 값을 반환한다 (단독 테스트
+        // 바이너리에서는 실행 파일 이름, DLL 로드는 그 DLL 이름).
+        let module = crate::host_module_name().expect("module name available");
+        assert!(!module.is_empty());
+        assert!(!module.contains('.'));
     }
 }

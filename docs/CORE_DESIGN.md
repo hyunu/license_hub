@@ -188,6 +188,7 @@ X(설명 인증서)가 "코어로직이 승인된 응용SW A에서만 동작"하
 - 호스트 대조: `context.product/version` vs X의 서명된 `product/version`
 - 고유값 대조: 프로젝트 파일의 `product_id`(GUID 등)를 X의 `metadata["product_id"]`에 서명으로 포함하고, 호스트가 등록한 값과 대조. 불일치 시 `PolicyRejected`
 - 실행 파일 이름 대조: X의 `metadata["executable_name"]`과 호스트가 측정한 실행 파일 이름(`host_executable_name()`, 확장자 제거 basename)을 대조. 실행 파일 이름은 리빌드해도 불변이라 개발 무중단
+- 모듈 이름 대조: 응용SW 로직을 DLL/공유 라이브러리로 분리한 경우 `current_exe()`는 호스트 .exe를 반환하므로, **lh_core가 포함된 모듈**의 이름(`host_module_name()`: POSIX `dladdr`/Windows `GetModuleHandleEx`)으로 바인딩한다. 단독 exe면 exe 이름, DLL 로드면 그 DLL 이름
 - 개발 편의: 빌드해시를 쓰지 않으므로 리빌드와 무관. 버전을 생략하면 제품명만 대조해 개발 중 주버전 내 수정도 허용
 - 재사용 방지: 코어를 다른 앱 B에 임베드하면 B의 제품명/고유값/실행 파일 이름 ≠ X → 거부
 

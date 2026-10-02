@@ -31,12 +31,103 @@ pub mod trusted;
 /// `None`을 반환한다.
 pub fn host_executable_name() -> Option<String> {
     let path = std::env::current_exe().ok()?;
-    let name = path.file_name()?.to_str()?.to_string();
-    Some(
-        name.rsplit_once('.')
-            .map(|(stem, _)| stem.to_string())
-            .unwrap_or(name),
-    )
+    let name = path.file_name()?.to_str()?;
+    Some(strip_extension(name))
+}
+
+/// lh_core가 포함된 모듈(공유 라이브러리/DLL 또는 실행 파일)의 이름을
+/// 반환한다.
+///
+/// `current_exe()`는 프로세스의 메인 실행 파일만 반환하지만, 이 함수는
+/// **lh_core 코드가 실제로 로드된 모듈**을 찾는다. 따라서 응용SW 로직을
+/// DLL/공유 라이브러리로 분리했을 때 그 DLL의 이름으로 바인딩할 수 있다.
+/// - 단독 실행 파일 → 실행 파일 이름
+/// - DLL/플러그인 로드 → 그 DLL 이름
+pub fn host_module_name() -> Option<String> {
+    // 이 함수 자신의 주소가 속한 모듈을 OS에 물어본다.
+    let addr = host_module_name as *const () as *mut core::ffi::c_void;
+    #[cfg(target_os = "windows")]
+    let raw = windows_module_path(addr);
+    #[cfg(not(target_os = "windows"))]
+    let raw = posix_module_path(addr);
+    let raw = raw?;
+    let name = raw.rsplit('/').next()?.rsplit('\\').next()?;
+    Some(strip_extension(name))
+}
+
+/// 파일 이름에서 확장자를 제거한다 (`app.exe` → `app`).
+fn strip_extension(name: &str) -> String {
+    name.rsplit_once('.')
+        .map(|(stem, _)| stem.to_string())
+        .unwrap_or_else(|| name.to_string())
+}
+
+/// POSIX(Linux/macOS)에서 주소가 속한 공유 라이브러리/실행 파일 경로를 얻는다.
+#[cfg(not(target_os = "windows"))]
+fn posix_module_path(addr: *mut core::ffi::c_void) -> Option<String> {
+    use std::ffi::CStr;
+    use std::os::raw::c_char;
+
+    #[repr(C)]
+    struct DlInfo {
+        dli_fname: *const c_char,
+        dli_fbase: *mut core::ffi::c_void,
+        dli_sname: *const c_char,
+        dli_saddr: *mut core::ffi::c_void,
+    }
+    unsafe extern "C" {
+        fn dladdr(addr: *mut core::ffi::c_void, info: *mut DlInfo) -> i32;
+    }
+    let mut info = DlInfo {
+        dli_fname: std::ptr::null(),
+        dli_fbase: std::ptr::null_mut(),
+        dli_sname: std::ptr::null(),
+        dli_saddr: std::ptr::null_mut(),
+    };
+    if unsafe { dladdr(addr, &mut info) } == 0 {
+        return None;
+    }
+    if info.dli_fname.is_null() {
+        return None;
+    }
+    let path = unsafe { CStr::from_ptr(info.dli_fname) }
+        .to_str()
+        .ok()?
+        .to_string();
+    Some(path)
+}
+
+/// Windows에서 주소가 속한 모듈(DLL/실행 파일)의 경로를 얻는다.
+#[cfg(target_os = "windows")]
+fn windows_module_path(addr: *mut core::ffi::c_void) -> Option<String> {
+    unsafe extern "system" {
+        fn GetModuleHandleExW(
+            flags: u32,
+            module_name: *const u16,
+            module: *mut *mut core::ffi::c_void,
+        ) -> i32;
+        fn GetModuleFileNameW(module: *mut core::ffi::c_void, filename: *mut u16, size: u32)
+        -> u32;
+    }
+    const GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS: u32 = 0x0000_0004;
+    const GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT: u32 = 0x0000_0002;
+    let mut hmod: *mut core::ffi::c_void = std::ptr::null_mut();
+    let ok = unsafe {
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            addr as *const u16,
+            &mut hmod,
+        )
+    };
+    if ok == 0 {
+        return None;
+    }
+    let mut buf = [0u16; 1024];
+    let len = unsafe { GetModuleFileNameW(hmod, buf.as_mut_ptr(), buf.len() as u32) };
+    if len == 0 {
+        return None;
+    }
+    Some(String::from_utf16_lossy(&buf[..len as usize]))
 }
 
 // 인증서 구조를 변경할 때 버전을 올린다. 검증기는 알 수 없는 버전을
