@@ -125,10 +125,10 @@ export function Licenses() {
               <label className="f">License ID (비우면 자동)
                 <input placeholder="자동 생성" value={form.license_id} onChange={(e) => set('license_id', e.target.value)} />
               </label>
-              <label className="f">제품
+              <label className="f">제품 <span className="req">*</span>
                 <input value={form.product} onChange={(e) => set('product', e.target.value)} placeholder="제품명" required />
               </label>
-              <label className="f">버전
+              <label className="f">버전 <span className="req">*</span>
                 <input value={form.version} onChange={(e) => set('version', e.target.value)} required />
               </label>
               <label className="f">등급
@@ -138,7 +138,7 @@ export function Licenses() {
                   <option value="3">3 — Device-Bound</option>
                 </select>
               </label>
-              <label className="f">소유자
+              <label className="f">소유자 <span className="req">*</span>
                 <input value={form.holder} onChange={(e) => set('holder', e.target.value)} required />
               </label>
               <label className="f">Device ID (L3)
@@ -152,6 +152,7 @@ export function Licenses() {
               </label>
             </div>
             <div className="form-actions">
+              <span className="sec-note"><span className="req">*</span> 필수</span>
               <button className="btn primary" disabled={busy}>{busy ? '생성 중…' : '생성'}</button>
             </div>
           </form>
