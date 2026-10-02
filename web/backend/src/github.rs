@@ -1,6 +1,7 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use time::OffsetDateTime;
 
 use crate::config::GitHubConfig;
@@ -32,6 +33,16 @@ struct InstallationReposResp {
 #[derive(Deserialize)]
 struct InstallationRepo {
     full_name: String,
+}
+
+#[derive(Deserialize)]
+struct AppResp {
+    permissions: HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct InstallationResp {
+    permissions: HashMap<String, String>,
 }
 
 /// GitHub Repository 동기화 클라이언트.
@@ -170,9 +181,56 @@ impl GitHubClient {
             .send()
             .map_err(|e| format!("github write failed: {e}"))?;
         if !resp.status().is_success() {
-            return Err(format!("github write error: {}", self.error_detail(resp)));
+            return Err(format!(
+                "github write error: {}\n진단: 앱 선언 권한={:?}, 설치 승인 권한={:?}",
+                self.error_detail(resp),
+                self.app_declared_permissions().unwrap_or_default(),
+                self.installation_effective_permissions()
+                    .unwrap_or_default(),
+            ));
         }
         Ok(())
+    }
+
+    /// 앱이 선언한 권한(GET /app, 앱 JWT로 조회).
+    fn app_declared_permissions(&self) -> Result<HashMap<String, String>, String> {
+        let jwt = self.app_jwt()?;
+        let url = format!("{API}/app");
+        let resp = self
+            .client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("Authorization", format!("Bearer {jwt}"))
+            .send()
+            .map_err(|e| format!("github app info failed: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("github app info error: {}", resp.status()));
+        }
+        let body: AppResp = resp
+            .json()
+            .map_err(|e| format!("github app info parse: {e}"))?;
+        Ok(body.permissions)
+    }
+
+    /// 설치가 실제로 승인한 권한(GET /app/installations/{id}).
+    /// 이 값이 'read'면 설치가 write를 승인하지 않은 것이다.
+    fn installation_effective_permissions(&self) -> Result<HashMap<String, String>, String> {
+        let jwt = self.app_jwt()?;
+        let url = format!("{API}/app/installations/{}", self.config.installation_id);
+        let resp = self
+            .client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("Authorization", format!("Bearer {jwt}"))
+            .send()
+            .map_err(|e| format!("github installation info failed: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("github installation info error: {}", resp.status()));
+        }
+        let body: InstallationResp = resp
+            .json()
+            .map_err(|e| format!("github installation info parse: {e}"))?;
+        Ok(body.permissions)
     }
 
     pub fn repo_name(&self) -> String {
