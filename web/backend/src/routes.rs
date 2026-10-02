@@ -192,10 +192,10 @@ pub async fn list_licenses(
     let db = state.db.lock().unwrap();
     let mut stmt = match &q.status {
         Some(_) => db
-            .prepare("SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, created_at FROM licenses WHERE status = ?1 ORDER BY id DESC")
+            .prepare("SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at FROM licenses WHERE status = ?1 ORDER BY id DESC")
             .map_err(|e| internal(&e.to_string()))?,
         None => db
-            .prepare("SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, created_at FROM licenses ORDER BY id DESC")
+            .prepare("SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at FROM licenses ORDER BY id DESC")
             .map_err(|e| internal(&e.to_string()))?,
     };
     let rows = if let Some(status) = &q.status {
@@ -223,7 +223,8 @@ fn map_license(row: &rusqlite::Row) -> rusqlite::Result<License> {
         device_id: row.get(6)?,
         expires_at: row.get(7)?,
         status: row.get(8)?,
-        created_at: row.get(9)?,
+        metadata: row.get(9)?,
+        created_at: row.get(10)?,
     })
 }
 
@@ -261,8 +262,8 @@ pub async fn create_license(
         {
             let db = state.db.lock().unwrap();
             let res = db.execute(
-                "INSERT INTO licenses (license_id, product, version, level, holder, device_id, expires_at, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, now_rfc3339()],
+                "INSERT INTO licenses (license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, body.metadata, now_rfc3339()],
             );
             if let Err(e) = res {
                 if e.to_string().contains("UNIQUE") && auto {
@@ -289,7 +290,7 @@ pub async fn create_license(
     let db = state.db.lock().unwrap();
     let lic = db
         .query_row(
-            "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, created_at FROM licenses WHERE license_id = ?1",
+            "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at FROM licenses WHERE license_id = ?1",
             params![license_id],
             map_license,
         )
@@ -353,7 +354,7 @@ pub async fn issue_certificate(
     let lic: License = {
         let db = state.db.lock().unwrap();
         db.query_row(
-            "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, created_at FROM licenses WHERE id = ?1",
+            "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at FROM licenses WHERE id = ?1",
             params![id],
             map_license,
         )
@@ -365,6 +366,11 @@ pub async fn issue_certificate(
     let mut req =
         CertificateRequest::new(&lic.license_id, lic.level as u8, &lic.product, &lic.version)
             .expires_at(&lic.expires_at);
+    if let Some(meta) = lic.metadata.as_deref()
+        && !meta.trim().is_empty()
+    {
+        req = req.metadata("user_metadata", Value::String(meta.to_string()));
+    }
     if lic.level >= 2 {
         req = req.verification_url(&state.verify_url);
     }

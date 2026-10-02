@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS licenses (
     device_id TEXT,
     expires_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',
+    metadata TEXT,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS certificates (
@@ -61,7 +62,27 @@ pub fn open(path: &str) -> rusqlite::Result<Connection> {
     }
     let conn = Connection::open(path)?;
     conn.execute_batch(SCHEMA)?;
+    migrate(&conn)?;
     Ok(conn)
+}
+
+/// 기존 DB에 추가된 컬럼을 안전하게 반영한다 (CREATE IF NOT EXISTS만으론
+/// 기존 테이블에 컬럼이 생기지 않으므로 ALTER TABLE로 보완).
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    if !has_column(conn, "licenses", "metadata") {
+        conn.execute_batch("ALTER TABLE licenses ADD COLUMN metadata TEXT;")?;
+    }
+    Ok(())
+}
+
+fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    conn.prepare(&format!("PRAGMA table_info({table})"))
+        .map(|mut stmt| {
+            stmt.query_map([], |r| r.get::<_, String>(1))
+                .map(|rows| rows.filter_map(Result::ok).any(|c| c == column))
+                .unwrap_or(false)
+        })
+        .unwrap_or(false)
 }
 
 #[cfg(test)]

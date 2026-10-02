@@ -19,6 +19,7 @@ pub struct License {
     pub device_id: Option<String>,
     pub expires_at: String,
     pub status: String,
+    pub metadata: Option<String>,
     pub created_at: String,
 }
 
@@ -57,6 +58,9 @@ pub struct LicenseInput {
     pub device_id: Option<String>,
     pub expires_at: String,
     pub status: Option<String>,
+    /// 사용자 메타정보(자유 텍스트)
+    #[serde(default)]
+    pub metadata: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

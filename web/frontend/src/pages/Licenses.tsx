@@ -9,6 +9,7 @@ const EMPTY_FORM = {
   holder: '',
   device_id: '',
   expires_at: '2027-01-01T00:00:00Z',
+  metadata: '',
 }
 
 export function Licenses() {
@@ -47,6 +48,7 @@ export function Licenses() {
       }
       if (form.license_id.trim()) body.license_id = form.license_id.trim()
       if (form.device_id) body.device_id = form.device_id
+      if (form.metadata.trim()) body.metadata = form.metadata.trim()
       const created = await api.createLicense(body)
       setNotice(`라이선스 ${created.license_id} 생성됨`)
       setForm(EMPTY_FORM)
@@ -144,6 +146,9 @@ export function Licenses() {
               </label>
               <label className="f">만료일
                 <input type="datetime-local" value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
+              </label>
+              <label className="f">메타정보
+                <input value={form.metadata} onChange={(e) => set('metadata', e.target.value)} placeholder="예: 고객사명, 계약번호" />
               </label>
             </div>
             <div className="form-actions">
