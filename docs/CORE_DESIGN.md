@@ -233,6 +233,7 @@ trait Signer {
 
 - `trusted::trusted_public_key()`: 재조립 후 무결성 해시(`KEY_SHA256`)를 확인해 훼손 시 panic(fail closed)한다.
 - `trusted::verify_trusted(cert, ctx)`: **키를 함수 밖으로 노출하지 않고** 재조립 → 검증 → 파기한다. X 케이스는 이 경로를 사용해 키가 검증 순간에만 메모리에 존재한다.
+- `Issuer::issue_x(AppIdentity)`: 응용SW 정체성(제품명·버전·product_id·executable_name)을 입력받아 X를 **K1 개인키로 서명**한다. 발급 직후 내장 K1 공개키로 자체 검증해, K1이 아닌 키로 발급하면 오류를 돌려준다.
 - 키 파기: 재조립 버퍼는 사용 직후 `zeroize`로 0으로 덮어쓴다. (`lh_trusted_public_key`/`lh_verify_trusted_certificate`도 동일)
 - `gen_trusted_key` 예제: 새 K1 키 쌍을 생성하거나 주어진 공개키로 분산 상수를 출력한다. 개인키는 라이선스 서버의 `LICENSEHUB_SIGNING_KEY`로 설정하며 저장소에 커밋하지 않는다.
 - C ABI: `lh_trusted_public_key` / `lh_verify_trusted_certificate` 로 외부 언어에서 X 검증을 제공한다.

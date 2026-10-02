@@ -11,8 +11,11 @@
 //! 변경 시 `cargo run --example gen_trusted_key` 로 새 상수를 생성한다.
 
 use ed25519_dalek::VerifyingKey;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
+
+use crate::{Certificate, CertificateRequest, IssueError, Issuer};
 
 // 재조립된 키가 빌드 시점의 원본과 같은지 확인하는 무결성 해시.
 // 값이 다르면 저장본이 훼손된 것이므로 검증을 거부한다(fail closed).
@@ -100,6 +103,82 @@ pub struct ScatteredKey {
     pub masks: [[u8; 8]; 4],
     pub order: [usize; 4],
     pub sha256: [u8; 32],
+}
+
+/// X(설명 인증서) 발급에 필요한 응용SW 정체성.
+///
+/// `product`/`version`은 X의 기본 필드로, `product_id`·`executable_name`은
+/// 서명 대상 metadata로 포함된다. 발급은 `Issuer::issue_x`로 수행한다.
+#[derive(Debug, Clone)]
+pub struct AppIdentity {
+    /// 응용SW 제품명 (코어 호스트 바인딩의 기본 정체성).
+    pub product: String,
+    /// 응용SW 버전.
+    pub version: String,
+    /// 프로젝트 파일 고유값(GUID 등). 있으면 `metadata["product_id"]`로 서명.
+    pub product_id: Option<String>,
+    /// 실행 파일/모듈 이름. 있으면 `metadata["executable_name"]`로 서명.
+    pub executable_name: Option<String>,
+    /// 만료 시각 (RFC 3339 UTC). 없으면 기본값(발급+1년)을 쓴다.
+    pub expires_at: Option<String>,
+}
+
+impl AppIdentity {
+    pub fn new(product: impl Into<String>, version: impl Into<String>) -> Self {
+        Self {
+            product: product.into(),
+            version: version.into(),
+            product_id: None,
+            executable_name: None,
+            expires_at: None,
+        }
+    }
+    pub fn product_id(mut self, value: impl Into<String>) -> Self {
+        self.product_id = Some(value.into());
+        self
+    }
+    pub fn executable_name(mut self, value: impl Into<String>) -> Self {
+        self.executable_name = Some(value.into());
+        self
+    }
+    pub fn expires_at(mut self, value: impl Into<String>) -> Self {
+        self.expires_at = Some(value.into());
+        self
+    }
+}
+
+impl Issuer {
+    /// X 단계: 응용SW 정체성을 입력받아 설명 인증서(X)를 발급한다.
+    ///
+    /// `product`/`version`을 X의 기본 필드로, `product_id`·`executable_name`을
+    /// 서명 metadata로 포함한다. 발급 직후 **내장 K1 공개키로 자체 검증**하여,
+    /// 이 Issuer가 K1 개인키로 서명하지 않은 경우 오류를 돌려준다(잘못된 키로
+    /// X를 발급하는 실수를 차단).
+    pub fn issue_x(&self, identity: &AppIdentity) -> Result<Certificate, IssueError> {
+        let mut request =
+            CertificateRequest::new(&identity.product, 1, &identity.product, &identity.version);
+        if let Some(product_id) = &identity.product_id {
+            request = request.metadata("product_id", Value::String(product_id.clone()));
+        }
+        if let Some(executable_name) = &identity.executable_name {
+            request = request.metadata("executable_name", Value::String(executable_name.clone()));
+        }
+        if let Some(expires_at) = &identity.expires_at {
+            request = request.expires_at(expires_at);
+        }
+        let certificate = self.issue(request)?;
+        // K1 개인키로 서명됐는지 확인 (내장 K1 공개키로 검증).
+        let context = crate::VerificationContext {
+            now: certificate.issued_at.clone(),
+            ..Default::default()
+        };
+        verify_trusted(&certificate, &context).map_err(|error| {
+            IssueError::InvalidRequest(format!(
+                "X certificate did not verify with embedded K1 key: {error:?}"
+            ))
+        })?;
+        Ok(certificate)
+    }
 }
 
 /// (도구/테스트용) 주어진 공개키를 분산 상수로 변환한다.
@@ -336,5 +415,20 @@ mod tests {
         let module = crate::host_module_name().expect("module name available");
         assert!(!module.is_empty());
         assert!(!module.contains('.'));
+    }
+
+    #[test]
+    fn issue_x_rejects_issuer_without_k1_private_key() {
+        use crate::Issuer;
+
+        // X 발급은 K1 개인키로만 가능해야 한다. 내장 K1 개인키는 저장소에
+        // 두지 않으므로, 다른 키로 발급하면 자체 검증(K1 공개키)이 실패해
+        // 오류를 돌려주는지 확인한다.
+        let signing = SigningKey::generate(&mut OsRng);
+        let issuer = Issuer::from_bytes("other", &signing.to_bytes());
+        let identity = AppIdentity::new("ExodusSimEngine", "1.0.0")
+            .product_id("{9F1A-4D2B}")
+            .executable_name("ExodusSimEngine");
+        assert!(issuer.issue_x(&identity).is_err());
     }
 }
