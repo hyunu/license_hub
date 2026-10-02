@@ -103,6 +103,14 @@ impl GitHubClient {
         Ok(())
     }
 
+    /// GitHub 오류 응답에서 상태 코드 + 본문을 추출한다.
+    /// 404/403이어도 GitHub 본문에 실제 사유(예: Resource not accessible)가 있다.
+    fn error_detail(&self, resp: reqwest::blocking::Response) -> String {
+        let status = resp.status();
+        let body = resp.text().unwrap_or_default();
+        format!("{status} {body}")
+    }
+
     /// Repository의 한 파일을 새로 쓰거나 갱신한다.
     fn write_file(&self, path: &str, content_b64: &str, message: &str) -> Result<(), String> {
         let token = self.installation_token()?;
@@ -143,7 +151,7 @@ impl GitHubClient {
             .send()
             .map_err(|e| format!("github write failed: {e}"))?;
         if !resp.status().is_success() {
-            return Err(format!("github write error: {}", resp.status()));
+            return Err(format!("github write error: {}", self.error_detail(resp)));
         }
         Ok(())
     }
