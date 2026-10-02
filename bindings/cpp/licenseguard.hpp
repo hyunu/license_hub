@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -65,6 +66,29 @@ public:
             reinterpret_cast<const uint8_t *>(context.data()), context.size(),
             &code);
         return {status, code};
+    }
+
+    // 코어 내장 신뢰 공개키(K1)로 X(설명 인증서)를 검증한다.
+    static VerifyResult verify_trusted(const std::vector<uint8_t> &certificate,
+                                       const std::string &context = "{}") {
+        uint32_t code = UINT32_MAX;
+        int32_t status = lh_verify_trusted_certificate(
+            certificate.data(), certificate.size(),
+            reinterpret_cast<const uint8_t *>(context.data()), context.size(),
+            &code);
+        return {status, code};
+    }
+
+    // 코어 내장 K1 공개키(32바이트)를 재조립해 반환한다.
+    static std::vector<uint8_t> trusted_public_key() {
+        std::vector<uint8_t> key(32);
+        size_t len = 32;
+        int32_t status = lh_trusted_public_key(key.data(), &len);
+        if (status != 0 || len != 32) {
+            throw std::runtime_error("trusted_public_key failed: status=" +
+                                     std::to_string(status));
+        }
+        return key;
     }
 };
 

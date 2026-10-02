@@ -20,6 +20,23 @@ int32_t lh_verify_certificate(
     uint32_t *result_code
 );
 
+/* Copies the embedded trusted public key (K1, reassembled at runtime) into
+ * out. Returns 0 on success, -1 for invalid arguments (including a buffer
+ * smaller than 32 bytes), or -2 if the scattered key integrity check fails.
+ * On success out_len is set to 32. */
+int32_t lh_trusted_public_key(uint8_t *out, size_t *out_len);
+
+/* Verifies a certificate using the embedded trusted public key (K1), for the
+ * X case (application core-logic protection). Same return convention as
+ * lh_verify_certificate but no public_key argument. */
+int32_t lh_verify_trusted_certificate(
+    const uint8_t *certificate,
+    size_t certificate_len,
+    const uint8_t *context,
+    size_t context_len,
+    uint32_t *result_code
+);
+
 #ifdef __cplusplus
 }
 #endif

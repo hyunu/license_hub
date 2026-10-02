@@ -20,6 +20,8 @@ use std::slice;
 use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+pub mod trusted;
+
 // 인증서 구조를 변경할 때 버전을 올린다. 검증기는 알 수 없는 버전을
 // 보수적으로 거부하여 새 형식을 구버전 Client가 잘못 해석하지 않게 한다.
 const CURRENT_SCHEMA_VERSION: u32 = 1;
@@ -877,6 +879,96 @@ pub unsafe extern "C" fn lh_verify_certificate(
         Ok::<u32, i32>(verification_code(verify(
             &certificate,
             &public_key,
+            &ffi_context.into_context(),
+        )))
+    }));
+    match outcome {
+        Ok(Ok(code)) => {
+            unsafe { *result_code = code };
+            0
+        }
+        Ok(Err(status)) => status,
+        Err(_) => -2,
+    }
+}
+
+//--------------------------------------------------------------------------------
+// 코어에 내장된 신뢰 공개키(K1, 분산 저장)를 재조립해 호출자 버퍼에 복사한다.
+//
+// X(설명 인증서) 검증용 신뢰 앵커다. 평문 키 상수를 두지 않으므로 정적 분석
+// 으로 키를 직접 찾기 어렵다.
+// - 인자: out: 32바이트를 기록할 출력 버퍼
+//         out_len: 입력 시 버퍼 용량, 반환 시 실제 기록 크기(32)
+// - 리턴: 0 성공 / -1 인자 오류(버퍼 부족 포함) / -2 무결성 실패
+//--------------------------------------------------------------------------------
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lh_trusted_public_key(out: *mut u8, out_len: *mut usize) -> i32 {
+    if out.is_null() || out_len.is_null() {
+        return -1;
+    }
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        let key = trusted::trusted_public_key().to_bytes();
+        let capacity = unsafe { *out_len };
+        if capacity < key.len() {
+            unsafe { *out_len = key.len() };
+            return Err(-1i32);
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(key.as_ptr(), out, key.len());
+            *out_len = key.len();
+        }
+        Ok::<(), i32>(())
+    }));
+    match outcome {
+        Ok(Ok(())) => 0,
+        Ok(Err(status)) => status,
+        Err(_) => -2,
+    }
+}
+
+//--------------------------------------------------------------------------------
+// 코어에 내장된 신뢰 공개키(K1)로 인증서(X)를 검증한다. 공개키를 인자로
+// 받지 않는 점만 `lh_verify_certificate`와 다르며, 응용SW 핵심로직 방어용이다.
+// - 인자: certificate: JSON 인증서 버퍼
+//         certificate_len: 인증서 길이
+//         context: 검증 Context JSON (비어 있으면 기본값)
+//         context_len: Context 버퍼 길이
+//         result_code: 검증 결과 코드를 기록할 출력 포인터
+// - 리턴: 0 처리 성공 / -1 인자 오류 / -2 입력 파싱 또는 무결성 오류
+//--------------------------------------------------------------------------------
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lh_verify_trusted_certificate(
+    certificate: *const u8,
+    certificate_len: usize,
+    context: *const u8,
+    context_len: usize,
+    result_code: *mut u32,
+) -> i32 {
+    if result_code.is_null()
+        || certificate.is_null()
+        || (context_len > 0 && context.is_null())
+        || certificate_len > MAX_CERTIFICATE_SIZE
+        || context_len > MAX_CONTEXT_SIZE
+    {
+        return -1;
+    }
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        let certificate_bytes = unsafe { slice::from_raw_parts(certificate, certificate_len) };
+        let context_bytes = if context_len == 0 {
+            b"{}" as &[u8]
+        } else {
+            unsafe { slice::from_raw_parts(context, context_len) }
+        };
+        let certificate: Certificate =
+            serde_json::from_slice(certificate_bytes).map_err(|_| -2i32)?;
+        let ffi_context: FfiVerificationContext =
+            serde_json::from_slice(context_bytes).map_err(|_| -2i32)?;
+        let trusted = trusted::trusted_public_key();
+        Ok::<u32, i32>(verification_code(verify(
+            &certificate,
+            &trusted,
             &ffi_context.into_context(),
         )))
     }));

@@ -170,6 +170,16 @@ canonicalization은 다음을 보장해야 한다.
 
 Core는 Private Key를 안전하게 보관하지 않는다. 발급 애플리케이션이 외부에서 키를 공급하고, Core는 서명 작업에 사용한다.
 
+### 6.3 내장 신뢰 공개키 (K1, 분산 저장)
+
+응용SW 핵심로직 방어(X) 용도의 신뢰 공개키는 평문 상수로 두지 않는다. `core/src/trusted.rs`가 32바이트 키를 4조각으로 쪼개 각 조각을 마스크(XOR)로 감싸고 저장 순서를 섞은 뒤, 사용 시점에만 재조립한다.
+
+- `trusted::trusted_public_key()`: 재조립 후 무결성 해시(`KEY_SHA256`)를 확인해 훼손 시 panic(fail closed)한다.
+- `gen_trusted_key` 예제: 새 K1 키 쌍을 생성하거나 주어진 공개키로 분산 상수를 출력한다. 개인키는 라이선스 서버의 `LICENSEHUB_SIGNING_KEY`로 설정하며 저장소에 커밋하지 않는다.
+- C ABI: `lh_trusted_public_key` / `lh_verify_trusted_certificate` 로 외부 언어에서 X 검증을 제공한다.
+
+보안 한계: 재조립 후 메모리에 키가 나타나므로 동적 분석으로 추출할 수 있다. 정적 패치의 난이도를 높이는 장치이며 절대적 보호는 아니다.
+
 초기 운영 방식:
 
 ```text

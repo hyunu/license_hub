@@ -70,6 +70,17 @@ namespace LicenseHub
             nuint contextLen,
             out uint resultCode);
 
+        [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int lh_verify_trusted_certificate(
+            byte[] certificate,
+            nuint certificateLen,
+            byte[] context,
+            nuint contextLen,
+            out uint resultCode);
+
+        [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int lh_trusted_public_key(byte[] outKey, ref nuint outLen);
+
         public static VerifyResult Verify(byte[] certificate, byte[] publicKey, byte[] context)
         {
             uint code;
@@ -79,6 +90,30 @@ namespace LicenseHub
                 context, (nuint)context.Length,
                 out code);
             return new VerifyResult(status, code);
+        }
+
+        // 코어 내장 신뢰 공개키(K1)로 X(설명 인증서)를 검증한다.
+        public static VerifyResult VerifyTrusted(byte[] certificate, byte[] context)
+        {
+            uint code;
+            int status = lh_verify_trusted_certificate(
+                certificate, (nuint)certificate.Length,
+                context, (nuint)context.Length,
+                out code);
+            return new VerifyResult(status, code);
+        }
+
+        // 코어 내장 K1 공개키(32바이트)를 재조립해 반환한다.
+        public static byte[] TrustedPublicKey()
+        {
+            byte[] outKey = new byte[32];
+            nuint len = 32;
+            int status = lh_trusted_public_key(outKey, ref len);
+            if (status != 0 || len != 32)
+            {
+                throw new InvalidOperationException($"trusted_public_key failed: status={status}");
+            }
+            return outKey;
         }
     }
 }

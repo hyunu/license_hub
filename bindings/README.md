@@ -70,6 +70,11 @@ if result.is_ok() {
 uint32_t code;
 int32_t status = lh_verify_certificate(cert, cert_len, pub, 32, ctx, ctx_len, &code);
 if (status == 0 && code == LH_VALID) { /* 활성화 */ }
+
+/* 응용SW 핵심로직 방어(X): 코어 내장 K1 공개키로 검증 (공개키 인자 불필요) */
+int32_t tstatus = lh_verify_trusted_certificate(cert, cert_len, ctx, ctx_len, &code);
+uint8_t k1[32]; size_t k1len = 32;
+lh_trusted_public_key(k1, &k1len);
 ```
 
 ## C++ 사용

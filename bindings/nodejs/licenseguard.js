@@ -70,6 +70,16 @@ class LicenseGuard {
             'int',
             ['uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint32_t *']
         );
+        this._verifyTrusted = lib.func(
+            'lh_verify_trusted_certificate',
+            'int',
+            ['uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint32_t *']
+        );
+        this._trustedKey = lib.func(
+            'lh_trusted_public_key',
+            'int',
+            ['uint8_t *', 'size_t *']
+        );
     }
 
     // certificate: 인증서 JSON 바이트(Buffer)
@@ -84,6 +94,29 @@ class LicenseGuard {
             code
         );
         return new VerifyResult(status, code[0]);
+    }
+
+    // 코어 내장 신뢰 공개키(K1)로 X(설명 인증서)를 검증한다.
+    verifyTrusted(certificate, context) {
+        const code = new Uint32Array(1);
+        const status = this._verifyTrusted(
+            certificate, certificate.length,
+            context, context.length,
+            code
+        );
+        return new VerifyResult(status, code[0]);
+    }
+
+    // 코어 내장 K1 공개키(32바이트)를 재조립해 반환한다.
+    trustedPublicKey() {
+        const out = new Uint8Array(32);
+        const cap = new BigUint64Array(1);
+        cap[0] = 32n;
+        const status = this._trustedKey(out, cap);
+        if (status !== 0 || Number(cap[0]) !== 32) {
+            throw new Error(`trusted_public_key failed: status=${status}`);
+        }
+        return Buffer.from(out);
     }
 }
 

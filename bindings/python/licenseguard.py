@@ -114,6 +114,22 @@ class LicenseGuard:
         fn.restype = ctypes.c_int32
         self._fn = fn
 
+        tfn = self._lib.lh_verify_trusted_certificate
+        tfn.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_uint32),
+        ]
+        tfn.restype = ctypes.c_int32
+        self._tfn = tfn
+
+        kfn = self._lib.lh_trusted_public_key
+        kfn.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
+        kfn.restype = ctypes.c_int32
+        self._kfn = kfn
+
     def verify(self, certificate: bytes, public_key: bytes, context: bytes = b"{}") -> VerifyResult:
         """인증서 JSON 바이트, Ed25519 공개키 32바이트, 검증 Context JSON 바이트."""
         cert_buf = ctypes.create_string_buffer(certificate)
@@ -127,3 +143,24 @@ class LicenseGuard:
             ctypes.byref(code),
         )
         return VerifyResult(status, code.value)
+
+    def verify_trusted(self, certificate: bytes, context: bytes = b"{}") -> VerifyResult:
+        """코어 내장 신뢰 공개키(K1)로 X(설명 인증서)를 검증한다."""
+        cert_buf = ctypes.create_string_buffer(certificate)
+        ctx_buf = ctypes.create_string_buffer(context)
+        code = ctypes.c_uint32(0xFFFFFFFF)
+        status = self._tfn(
+            cert_buf, len(certificate),
+            ctx_buf, len(context),
+            ctypes.byref(code),
+        )
+        return VerifyResult(status, code.value)
+
+    def trusted_public_key(self) -> bytes:
+        """코어 내장 K1 공개키(32바이트)를 재조립해 반환한다."""
+        out = ctypes.create_string_buffer(32)
+        cap = ctypes.c_size_t(32)
+        status = self._kfn(out, ctypes.byref(cap))
+        if status != 0 or cap.value != 32:
+            raise RuntimeError(f"trusted_public_key failed: status={status}")
+        return out.raw[:32]
