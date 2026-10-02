@@ -582,6 +582,61 @@ pub async fn list_audit(
     Ok(Json(out))
 }
 
+// ---------------- Client 공개 엔드포인트 ----------------
+
+/// SW Client가 license_id로 자신의 인증서를 내려받는 공개 엔드포인트.
+/// GitHub 자격증명 없이 LicenseHub API를 통해 인증서를 받는다.
+/// (L1 인증서는 이 방식으로 받아 오프라인 검증에 사용한다)
+pub async fn claim_certificate(
+    State(state): State<Arc<AppState>>,
+    Path(license_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let (status, cert_json): (String, String) = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT l.status, c.cert_json
+             FROM licenses l JOIN certificates c ON c.license_id = l.license_id
+             WHERE l.license_id = ?1 ORDER BY c.id DESC LIMIT 1",
+            params![license_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|_| not_found("no certificate for this license"))?
+    };
+    if status != "active" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "license not active", "status": status })),
+        ));
+    }
+    let parsed: Value = serde_json::from_str(&cert_json).map_err(|e| internal(&e.to_string()))?;
+    Ok(Json(parsed))
+}
+
+/// SW Client가 폐기 목록(Blacklist)을 받는 공개 엔드포인트.
+/// GitHub blacklist.json 과 같은 형태를 반환한다.
+pub async fn client_blacklist(State(state): State<Arc<AppState>>) -> Result<Json<Value>, ApiError> {
+    let (version, ids) = {
+        let db = state.db.lock().unwrap();
+        let version = meta_get(&db, "blacklist.version")
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+        let mut stmt = db
+            .prepare("SELECT license_id FROM blacklist ORDER BY license_id")
+            .map_err(|e| internal(&e.to_string()))?;
+        let ids: Vec<String> = stmt
+            .query_map([], |r| r.get(0))
+            .map_err(|e| internal(&e.to_string()))?
+            .collect::<Result<_, _>>()
+            .map_err(|e| internal(&e.to_string()))?;
+        (version, ids)
+    };
+    Ok(Json(json!({
+        "version": version,
+        "updated_at": now_rfc3339(),
+        "licenses": ids,
+    })))
+}
+
 // ---------------- Verify (L2/L3 서버 검증) ----------------
 
 pub async fn verify(

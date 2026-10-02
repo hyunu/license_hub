@@ -79,6 +79,8 @@ fn main() {
         .route("/api/stats", get(routes::stats))
         .route("/api/public-key", get(routes::public_key))
         .route("/api/verify", post(routes::verify))
+        .route("/api/claim/{license_id}", get(routes::claim_certificate))
+        .route("/api/client/blacklist", get(routes::client_blacklist))
         .route(
             "/api/licenses",
             get(routes::list_licenses).post(routes::create_license),

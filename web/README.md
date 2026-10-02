@@ -98,6 +98,30 @@ GitHub App 권한은 대상 Repository의 Contents Read/Write, Metadata Read
 - `web/backend` 테스트 + Clippy
 - `web/frontend` 빌드
 
+## SW Client 다운로드
+
+SW Client는 GitHub에 직접 접속하지 않고 **LicenseHub API(공개 엔드포인트)**로
+데이터를 내려받는다.
+
+| 엔드포인트 | 용도 | 인증 |
+|---|---|---|
+| `GET /api/claim/{license_id}` | 자신의 인증서 JSON 다운로드 | 없음 |
+| `GET /api/client/blacklist` | 폐기 목록 (GitHub blacklist.json 형식) | 없음 |
+| `GET /api/public-key` | 검증용 공개키 | 없음 |
+| `POST /api/verify` | L2/L3 서버 검증 (approved/rejected) | 없음 |
+
+Client 흐름:
+
+```text
+1. 인증서 다운로드 → GET /api/claim/{license_id}   (L1 오프라인 검증용)
+2. 공개키        → GET /api/public-key            (서명 검증)
+3. 폐기 확인     → GET /api/client/blacklist 주기적 캐시
+4. (L2/L3)       → POST /api/verify 서버 상태 확인
+```
+
+GitHub 동기화 탭은 같은 데이터를 GitHub 저장소에 배포하는 채널이며, Client는
+그 저장소가 Private이어도 상관없이 API를 통해 받는다.
+
 ## API 요약
 
 | 메서드 | 경로 | 설명 |
