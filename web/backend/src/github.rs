@@ -18,6 +18,8 @@ struct AppJwtClaims {
 #[derive(Deserialize)]
 struct InstallTokenResp {
     token: String,
+    #[serde(default)]
+    permissions: HashMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -78,7 +80,7 @@ impl GitHubClient {
     }
 
     /// GitHub App 설치 토큰을 발급받는다.
-    fn installation_token(&self) -> Result<String, String> {
+    fn installation_token(&self) -> Result<(String, HashMap<String, String>), String> {
         let jwt = self.app_jwt()?;
         let url = format!(
             "{API}/app/installations/{}/access_tokens",
@@ -97,7 +99,7 @@ impl GitHubClient {
         let body: InstallTokenResp = resp
             .json()
             .map_err(|e| format!("github token parse: {e}"))?;
-        Ok(body.token)
+        Ok((body.token, body.permissions))
     }
 
     /// 설치 토큰이 대상 저장소에 접근 가능한지 확인.
@@ -143,7 +145,7 @@ impl GitHubClient {
 
     /// Repository의 한 파일을 새로 쓰거나 갱신한다.
     fn write_file(&self, path: &str, content_b64: &str, message: &str) -> Result<(), String> {
-        let token = self.installation_token()?;
+        let (token, token_permissions) = self.installation_token()?;
         self.check_repo_access(&token)?;
         let repo_path = format!("{}/{}/{}", self.config.owner, self.config.repo, path);
 
@@ -182,8 +184,9 @@ impl GitHubClient {
             .map_err(|e| format!("github write failed: {e}"))?;
         if !resp.status().is_success() {
             return Err(format!(
-                "github write error: {}\n진단: 앱 선언 권한={:?}, 설치 승인 권한={:?}",
+                "github write error: {}\n진단: 토큰 권한={:?}, 앱 선언 권한={:?}, 설치 승인 권한={:?}",
                 self.error_detail(resp),
+                token_permissions,
                 self.app_declared_permissions().unwrap_or_default(),
                 self.installation_effective_permissions()
                     .unwrap_or_default(),
