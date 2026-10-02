@@ -29,7 +29,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: LICENSEHUB_SIGNING_KEY,LICENSEHUB_VERIFY_URL,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD,PROXY_DOMAIN
+          envs: LICENSEHUB_SIGNING_KEY,LICENSEHUB_VERIFY_URL,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD,PROXY_DOMAIN,GITHUB_REPO,GITHUB_APP_ID,GITHUB_INSTALLATION_ID,GITHUB_APP_PRIVATE_KEY
           script: |
             set -e
             sudo mkdir -p /opt/licensehub/data /opt/licensehub/bin /opt/licensehub/frontend
@@ -49,6 +49,19 @@ jobs:
             LICENSEHUB_ADMIN_PASSWORD=${LICENSEHUB_ADMIN_PASSWORD}
             EOF
 
+            # GitHub App 연동 (선택): 멀티라인 PEM은 별도 파일로 저장
+            if [ -n "${GITHUB_APP_PRIVATE_KEY:-}" ]; then
+              printf '%s\n' "${GITHUB_APP_PRIVATE_KEY}" | sudo tee /opt/licensehub/app.pem >/dev/null
+              sudo chmod 600 /opt/licensehub/app.pem
+              echo "--- app.pem 작성됨 (크기: $(sudo wc -c < /opt/licensehub/app.pem) bytes) ---"
+            fi
+            sudo tee -a /opt/licensehub/.env >/dev/null <<EOF
+            GITHUB_REPO=${GITHUB_REPO}
+            GITHUB_APP_ID=${GITHUB_APP_ID}
+            GITHUB_INSTALLATION_ID=${GITHUB_INSTALLATION_ID}
+            GITHUB_APP_PRIVATE_KEY_PATH=/opt/licensehub/app.pem
+            EOF
+
             sudo chmod 600 /opt/licensehub/.env
             echo "--- /opt/licensehub/.env (값 숨김) ---"
             sudo sed 's/=.*$/=<redacted>/' /opt/licensehub/.env
@@ -63,3 +76,7 @@ jobs:
           LICENSEHUB_ADMIN_USER: ${{ secrets.LICENSEHUB_ADMIN_USER }}
           LICENSEHUB_ADMIN_PASSWORD: ${{ secrets.LICENSEHUB_ADMIN_PASSWORD }}
           PROXY_DOMAIN: ${{ secrets.PROXY_DOMAIN }}
+          GITHUB_REPO: ${{ secrets.GITHUB_REPO }}
+          GITHUB_APP_ID: ${{ secrets.GITHUB_APP_ID }}
+          GITHUB_INSTALLATION_ID: ${{ secrets.GITHUB_INSTALLATION_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}

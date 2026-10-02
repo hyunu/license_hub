@@ -26,6 +26,14 @@ SSH 접근만 있으면 GitHub Actions로 Oracle(Ubuntu) 인스턴스에 백엔�
 - **PROXY_DOMAIN** — Caddy가 HTTPS를 받을 호스트명
   - 예: `146.56.111.99.sslip.io` (sslip.io) 또는 `licensehub.duckdns.org`
 
+선택(웹앱의 GitHub 동기화 탭용, GitHub App 연동):
+
+- **GITHUB_REPO** — push할 저장소 (예: `hyunu/licensehub-repo`)
+- **GITHUB_APP_ID** — GitHub App ID (Developer settings)
+- **GITHUB_INSTALLATION_ID** — 앱 설치 번호 (설치 URL의 숫자)
+- **GITHUB_APP_PRIVATE_KEY** — GitHub App 개인키 PEM 전체. 프로비저닝이
+  `/opt/licensehub/app.pem`으로 저장하고 `.env`에 경로를 기록한다.
+
 ### 2. 1회 환경 구축 (프로비저닝)
 
 Actions 탭 → **Provision Oracle Backend** → Run workflow.
