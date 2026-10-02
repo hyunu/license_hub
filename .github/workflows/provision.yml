@@ -69,6 +69,13 @@ jobs:
             # Caddy 리버스프록시 도메인 (예: 146.56.111.99.sslip.io)
             sudo cp "$HOME/licensehub-setup/web/deploy/ssh/bootstrap.sh" /opt/licensehub/bootstrap.sh
             sudo bash /opt/licensehub/bootstrap.sh "${PROXY_DOMAIN}"
+
+            # .env 변경 반영: 백엔드 서비스 재시작 (바이너리가 있으면)
+            if [ -x /opt/licensehub/bin/licensehub-web-backend ]; then
+              sudo systemctl restart licensehub-web || true
+              sleep 2
+              sudo systemctl is-active licensehub-web || true
+            fi
             echo "PROVISION OK"
         env:
           LICENSEHUB_SIGNING_KEY: ${{ secrets.LICENSEHUB_SIGNING_KEY }}
