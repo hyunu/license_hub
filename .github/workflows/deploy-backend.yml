@@ -45,10 +45,10 @@ jobs:
         run: |
           if [ "${ARCH}" = "aarch64" ] || [ "${ARCH}" = "arm64" ]; then
             # aarch64 musl 크로스 툴체인: zig (musl libc 내장, 정적 바이너리)
-            curl -fsSL https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz -o /tmp/zig.tar.xz
+            curl -fsSL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz -o /tmp/zig.tar.xz
             tar -xJf /tmp/zig.tar.xz -C /tmp
-            echo "/tmp/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
-            /tmp/zig-linux-x86_64-0.13.0/zig version
+            echo "/tmp/zig-linux-x86_64-0.14.0" >> "$GITHUB_PATH"
+            /tmp/zig-linux-x86_64-0.14.0/zig version
           else
             sudo apt-get update -y
             sudo apt-get install -y musl-tools
