@@ -233,14 +233,8 @@ pub async fn create_license(
     Json(body): Json<LicenseInput>,
 ) -> Result<Json<License>, ApiError> {
     let user = auth_user(&state, &headers)?;
-    if body.license_id.is_empty()
-        || body.product.is_empty()
-        || body.version.is_empty()
-        || body.holder.is_empty()
-    {
-        return Err(bad_request(
-            "license_id, product, version, holder are required",
-        ));
+    if body.product.is_empty() || body.version.is_empty() || body.holder.is_empty() {
+        return Err(bad_request("product, version, holder are required"));
     }
     if !(1..=3).contains(&body.level) {
         return Err(bad_request("level must be 1, 2, or 3"));
@@ -249,20 +243,42 @@ pub async fn create_license(
     if body.level == 3 && body.device_id.as_deref().unwrap_or("").is_empty() {
         return Err(bad_request("level 3 requires device_id"));
     }
-    let license_id = body.license_id.clone();
-    let db = state.db.lock().unwrap();
-    let res = db.execute(
-        "INSERT INTO licenses (license_id, product, version, level, holder, device_id, expires_at, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![body.license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, now_rfc3339()],
-    );
-    drop(db);
-    if let Err(e) = res {
-        return if e.to_string().contains("UNIQUE") {
-            Err(conflict("license_id already exists"))
-        } else {
-            Err(internal(&e.to_string()))
-        };
+
+    // license_id 를 비워두면 시스템이 자동 생성한다 (충돌 시 재생성).
+    let auto = body
+        .license_id
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty();
+    let mut license_id = if auto {
+        generate_license_id()
+    } else {
+        body.license_id.clone().unwrap().trim().to_string()
+    };
+
+    for _ in 0..8 {
+        {
+            let db = state.db.lock().unwrap();
+            let res = db.execute(
+                "INSERT INTO licenses (license_id, product, version, level, holder, device_id, expires_at, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, now_rfc3339()],
+            );
+            if let Err(e) = res {
+                if e.to_string().contains("UNIQUE") && auto {
+                    license_id = generate_license_id();
+                    continue;
+                }
+                return if e.to_string().contains("UNIQUE") {
+                    Err(conflict("license_id already exists"))
+                } else {
+                    Err(internal(&e.to_string()))
+                };
+            }
+        }
+        break;
     }
+
     log_audit(
         &state,
         &user.username,
@@ -279,6 +295,18 @@ pub async fn create_license(
         )
         .map_err(|e| internal(&e.to_string()))?;
     Ok(Json(lic))
+}
+
+/// 시스템이 자동으로 부여하는 License ID (예: XXXX-XXXX, 혼동 문자 제외).
+fn generate_license_id() -> String {
+    const CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let mut bytes = [0u8; 8];
+    let _ = getrandom::fill(&mut bytes);
+    let s: String = bytes
+        .iter()
+        .map(|b| CHARS[(b % CHARS.len() as u8) as usize] as char)
+        .collect();
+    format!("{}-{}", &s[..4], &s[4..])
 }
 
 pub async fn license_status(

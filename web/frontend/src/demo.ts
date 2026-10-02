@@ -81,9 +81,10 @@ export function demoLicensesByStatus(status?: string): License[] {
 
 export function demoCreateLicense(body: Record<string, unknown>): License {
   seq += 1
+  const licenseId = String(body.license_id ?? '').trim() || demoLicenseId()
   const lic: License = {
     id: seq,
-    license_id: String(body.license_id),
+    license_id: licenseId,
     product: String(body.product),
     version: String(body.version),
     level: Number(body.level),
@@ -96,6 +97,14 @@ export function demoCreateLicense(body: Record<string, unknown>): License {
   demoLicenses.unshift(lic)
   demoAudit.unshift({ id: seq + 1000, actor: 'admin', action: 'license.create', target: lic.license_id, detail: null, created_at: now() })
   return lic
+}
+
+// 시스템 자동 생성 License ID (예: XXXX-XXXX)
+function demoLicenseId(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let s = ''
+  for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)]
+  return `${s.slice(0, 4)}-${s.slice(4)}`
 }
 
 export function demoIssueCertificate(id: number): { certificate: Record<string, unknown>; certificate_id: string } {

@@ -47,7 +47,9 @@ pub struct LoginRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct LicenseInput {
-    pub license_id: String,
+    /// 비워두면 시스템이 자동으로 생성한다.
+    #[serde(default)]
+    pub license_id: Option<String>,
     pub product: String,
     pub version: String,
     pub level: i64,

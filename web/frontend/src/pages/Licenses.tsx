@@ -38,16 +38,16 @@ export function Licenses() {
     setBusy(true)
     try {
       const body: Record<string, unknown> = {
-        license_id: form.license_id,
         product: form.product,
         version: form.version,
         level: Number(form.level),
         holder: form.holder,
         expires_at: form.expires_at,
       }
+      if (form.license_id.trim()) body.license_id = form.license_id.trim()
       if (form.device_id) body.device_id = form.device_id
-      await api.createLicense(body)
-      setNotice(`라이선스 ${form.license_id} 생성됨`)
+      const created = await api.createLicense(body)
+      setNotice(`라이선스 ${created.license_id} 생성됨`)
       setForm(EMPTY_FORM)
       load(filter)
     } catch (err) {
@@ -95,7 +95,7 @@ export function Licenses() {
       <div className="card">
         <h3>라이선스 생성</h3>
         <form className="grid" onSubmit={create}>
-          <label>License ID<input value={form.license_id} onChange={(e) => set('license_id', e.target.value)} required /></label>
+          <label>License ID (비우면 자동 생성)<input placeholder="자동 생성" value={form.license_id} onChange={(e) => set('license_id', e.target.value)} /></label>
           <label>제품<input value={form.product} onChange={(e) => set('product', e.target.value)} required /></label>
           <label>버전<input value={form.version} onChange={(e) => set('version', e.target.value)} required /></label>
           <label>등급<select value={form.level} onChange={(e) => set('level', e.target.value)}>
