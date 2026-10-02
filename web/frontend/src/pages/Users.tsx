@@ -60,6 +60,8 @@ export function Users() {
                   <option value="operator">operator</option>
                 </select>
               </label>
+            </div>
+            <div className="form-actions">
               <button className="btn primary">추가</button>
             </div>
           </form>

@@ -143,6 +143,8 @@ export function Licenses() {
               <label className="f">만료일
                 <input type="datetime-local" value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
               </label>
+            </div>
+            <div className="form-actions">
               <button className="btn primary" disabled={busy}>{busy ? '생성 중…' : '생성'}</button>
             </div>
           </form>

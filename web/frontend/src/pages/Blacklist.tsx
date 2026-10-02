@@ -63,6 +63,8 @@ export function Blacklist() {
               <label className="f">사유
                 <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="예: 미결제, 환불" />
               </label>
+            </div>
+            <div className="form-actions">
               <button className="btn primary">추가</button>
             </div>
           </form>
