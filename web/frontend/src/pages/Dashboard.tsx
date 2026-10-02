@@ -6,14 +6,12 @@ export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [licenses, setLicenses] = useState<License[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
-  const [sync, setSync] = useState<{ configured: boolean; repo: string | null } | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     api.stats().then(setStats).catch((e) => setError(String(e)))
     api.licenses().then((l) => setLicenses(l.slice(0, 10))).catch(() => {})
     api.audit().then((a) => setAudit(a.slice(0, 15))).catch(() => {})
-    api.syncStatus().then(setSync).catch(() => {})
   }, [])
 
   const rows: Array<[string, number | undefined]> = [
@@ -30,9 +28,6 @@ export function Dashboard() {
     <div>
       <header className="topbar">
         <h1 className="title">운영 현황</h1>
-        <span className="ctx">
-          {sync?.configured ? `배포 저장소 ${sync.repo}` : 'GitHub 동기화 미구성'} · 인증 GitHub App
-        </span>
       </header>
 
       <div className="content">
