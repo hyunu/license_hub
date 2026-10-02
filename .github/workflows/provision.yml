@@ -74,7 +74,7 @@ jobs:
             if [ -s "$HOME/licensehub-setup/web/deploy/ssh/app.pem" ]; then
               sudo cp "$HOME/licensehub-setup/web/deploy/ssh/app.pem" /opt/licensehub/app.pem
               sudo chmod 600 /opt/licensehub/app.pem
-              echo "--- app.pem 크기: $(sudo wc -c < /opt/licensehub/app.pem) bytes ---"
+              echo "--- app.pem 크기: $(sudo wc -c /opt/licensehub/app.pem | awk '{print $1}') bytes ---"
             else
               echo "--- 경고: app.pem 없음 — 개인키 미설치 ---"
             fi
