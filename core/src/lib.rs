@@ -345,6 +345,9 @@ pub struct VerificationContext {
     pub product: Option<String>,
     /// 설정된 경우 인증서 버전과 일치해야 한다.
     pub version: Option<String>,
+    /// 설정된 경우 인증서 metadata["product_id"]와 일치해야 한다.
+    /// 프로젝트 파일의 고유값(GUID 등)으로 앱 단위 바인딩을 강화한다.
+    pub product_id: Option<String>,
     /// L3 검증에 사용할 현재 장치의 원본 ID.
     pub device_id: Option<String>,
     /// L2/L3 서버 검증 결과.
@@ -370,6 +373,7 @@ impl Default for VerificationContext {
             now: "2026-06-01T00:00:00Z".into(),
             product: None,
             version: None,
+            product_id: None,
             device_id: None,
             server_status: None,
             blacklisted: false,
@@ -574,6 +578,19 @@ fn verify_at_depth(
             .is_some_and(|version| version != certificate.version)
     {
         return Err(VerificationError::PolicyRejected);
+    }
+    // 프로젝트 파일 고유값(product_id)이 설정되면 인증서의 서명된
+    // metadata["product_id"]와 비교한다. X(설명 인증서)의 앱 단위 바인딩을
+    // 강화하는 검증으로, 불일치 시 실패한다.
+    if let Some(pid) = context.product_id.as_deref() {
+        let cert_pid = certificate
+            .metadata
+            .get("product_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if pid != cert_pid {
+            return Err(VerificationError::PolicyRejected);
+        }
     }
     // 등급 필드와 부가 필드의 조합을 확인한다. 예를 들어 L1에 server나
     // device 정보가 붙어 있으면 발급 정책 위반으로 간주한다.
@@ -780,6 +797,7 @@ struct FfiVerificationContext {
     now: Option<String>,
     product: Option<String>,
     version: Option<String>,
+    product_id: Option<String>,
     device_id: Option<String>,
     server_status: Option<String>,
     #[serde(default)]
@@ -807,6 +825,7 @@ impl FfiVerificationContext {
                 .unwrap_or_else(|| VerificationContext::default().now),
             product: self.product,
             version: self.version,
+            product_id: self.product_id,
             device_id: self.device_id,
             server_status,
             blacklisted: self.blacklisted,

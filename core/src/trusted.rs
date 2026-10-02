@@ -257,4 +257,37 @@ mod tests {
         };
         assert!(verify(&x, &key, &ctx_dev).is_ok());
     }
+
+    #[test]
+    fn product_id_from_project_file_is_compared() {
+        use crate::{CertificateRequest, Issuer, VerificationContext, VerificationError, verify};
+
+        // X에 프로젝트 파일 고유값(product_id)을 서명 데이터로 포함해 발급한다.
+        let signing = SigningKey::generate(&mut OsRng);
+        let issuer = Issuer::from_bytes("k1", &signing.to_bytes());
+        let x = issuer
+            .issue(
+                CertificateRequest::new("EX-1", 1, "ExodusSimEngine", "1.0.0")
+                    .metadata("product_id", serde_json::json!("{9F1A-4D2B}")),
+            )
+            .unwrap();
+        let key = signing.verifying_key();
+
+        // 호스트가 등록한 product_id가 서명된 값과 일치 → 유효
+        let ctx = VerificationContext {
+            product_id: Some("{9F1A-4D2B}".into()),
+            ..Default::default()
+        };
+        assert!(verify(&x, &key, &ctx).is_ok());
+
+        // 다른 고유값(다른 앱)이면 거부
+        let ctx_other = VerificationContext {
+            product_id: Some("{0000-0000}".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            verify(&x, &key, &ctx_other),
+            Err(VerificationError::PolicyRejected)
+        ));
+    }
 }
