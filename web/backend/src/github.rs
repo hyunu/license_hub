@@ -20,6 +20,18 @@ struct InstallTokenResp {
     token: String,
     #[serde(default)]
     permissions: HashMap<String, String>,
+    #[serde(default)]
+    repository_selection: Option<String>,
+    #[serde(default)]
+    repositories: Vec<InstallationRepo>,
+}
+
+/// 발급된 설치 토큰과 그 권한·접근 저장소 정보.
+struct InstallationTokenInfo {
+    token: String,
+    permissions: HashMap<String, String>,
+    repository_selection: Option<String>,
+    repositories: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -80,7 +92,7 @@ impl GitHubClient {
     }
 
     /// GitHub App 설치 토큰을 발급받는다.
-    fn installation_token(&self) -> Result<(String, HashMap<String, String>), String> {
+    fn installation_token(&self) -> Result<InstallationTokenInfo, String> {
         let jwt = self.app_jwt()?;
         let url = format!(
             "{API}/app/installations/{}/access_tokens",
@@ -99,7 +111,16 @@ impl GitHubClient {
         let body: InstallTokenResp = resp
             .json()
             .map_err(|e| format!("github token parse: {e}"))?;
-        Ok((body.token, body.permissions))
+        Ok(InstallationTokenInfo {
+            token: body.token,
+            permissions: body.permissions,
+            repository_selection: body.repository_selection,
+            repositories: body
+                .repositories
+                .iter()
+                .map(|r| r.full_name.clone())
+                .collect(),
+        })
     }
 
     /// 설치 토큰이 대상 저장소에 접근 가능한지 확인.
@@ -145,8 +166,8 @@ impl GitHubClient {
 
     /// Repository의 한 파일을 새로 쓰거나 갱신한다.
     fn write_file(&self, path: &str, content_b64: &str, message: &str) -> Result<(), String> {
-        let (token, token_permissions) = self.installation_token()?;
-        self.check_repo_access(&token)?;
+        let info = self.installation_token()?;
+        self.check_repo_access(&info.token)?;
         let repo_path = format!("{}/{}/{}", self.config.owner, self.config.repo, path);
 
         let get_url = format!("{API}/repos/{repo_path}");
@@ -155,7 +176,7 @@ impl GitHubClient {
                 .client
                 .get(&get_url)
                 .header("Accept", "application/vnd.github+json")
-                .header("Authorization", format!("Bearer {token}"))
+                .header("Authorization", format!("Bearer {}", info.token))
                 .send()
                 .map_err(|e| format!("github read failed: {e}"))?;
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -178,15 +199,17 @@ impl GitHubClient {
             .client
             .put(put_url)
             .header("Accept", "application/vnd.github+json")
-            .header("Authorization", format!("Bearer {token}"))
+            .header("Authorization", format!("Bearer {}", info.token))
             .json(&body)
             .send()
             .map_err(|e| format!("github write failed: {e}"))?;
         if !resp.status().is_success() {
             return Err(format!(
-                "github write error: {}\n진단: 토큰 권한={:?}, 앱 선언 권한={:?}, 설치 승인 권한={:?}",
+                "github write error: {}\n진단: 토큰 권한={:?}, 저장소선택={:?}, 토큰접근저장소={:?}, 앱 권한={:?}, 설치 권한={:?}",
                 self.error_detail(resp),
-                token_permissions,
+                info.permissions,
+                info.repository_selection,
+                info.repositories,
                 self.app_declared_permissions().unwrap_or_default(),
                 self.installation_effective_permissions()
                     .unwrap_or_default(),
