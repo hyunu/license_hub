@@ -50,7 +50,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: LICENSEHUB_SIGNING_KEY,LICENSEHUB_VERIFY_URL,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD,PROXY_DOMAIN,GITHUB_REPO,GITHUB_APP_ID,GITHUB_INSTALLATION_ID
+          envs: LICENSEHUB_SIGNING_KEY,LICENSEHUB_VERIFY_URL,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD,PROXY_DOMAIN,GITHUB_REPO,GITHUB_APP_ID,GITHUB_INSTALLATION_ID,GITHUB_PAT
           script: |
             set -e
             sudo mkdir -p /opt/licensehub/data /opt/licensehub/bin /opt/licensehub/frontend
@@ -83,6 +83,7 @@ jobs:
             GITHUB_APP_ID=${GITHUB_APP_ID}
             GITHUB_INSTALLATION_ID=${GITHUB_INSTALLATION_ID}
             GITHUB_APP_PRIVATE_KEY_PATH=/opt/licensehub/app.pem
+            GITHUB_PAT=${GITHUB_PAT}
             EOF
 
             sudo chmod 600 /opt/licensehub/.env
@@ -109,3 +110,4 @@ jobs:
           GITHUB_REPO: ${{ secrets.LH_GITHUB_REPO }}
           GITHUB_APP_ID: ${{ secrets.LH_GITHUB_APP_ID }}
           GITHUB_INSTALLATION_ID: ${{ secrets.LH_GITHUB_INSTALLATION_ID }}
+          GITHUB_PAT: ${{ secrets.GH_DEPLOY_PAT }}

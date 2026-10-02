@@ -26,14 +26,16 @@ SSH 접근만 있으면 GitHub Actions로 Oracle(Ubuntu) 인스턴스에 백엔�
 - **PROXY_DOMAIN** — Caddy가 HTTPS를 받을 호스트명
   - 예: `146.56.111.99.sslip.io` (sslip.io) 또는 `licensehub.duckdns.org`
 
-선택(웹앱의 GitHub 동기화 탭용, GitHub App 연동).
-GitHub 시크릿 이름은 `GITHUB_`로 시작할 수 없으므로 `LH_GITHUB_*`를 사용한다:
+선택(웹앱의 GitHub 동기화 탭용). 인증 방식은 **PAT** 또는 **GitHub App** 중 하나:
 
-- **LH_GITHUB_REPO** — push할 저장소 (예: `hyunu/licensehub-distribution`)
-- **LH_GITHUB_APP_ID** — GitHub App ID (Developer settings)
-- **LH_GITHUB_INSTALLATION_ID** — 앱 설치 번호 (설치 URL의 숫자)
-- **LH_GITHUB_APP_PRIVATE_KEY** — GitHub App 개인키 PEM 전체. 프로비저닝이
-  `/opt/licensehub/app.pem`으로 저장하고 `.env`에 경로를 기록한다.
+- **GH_DEPLOY_PAT** — 배포 저장소 전용 파인그레인 PAT (Contents: Read and write).
+  GitHub App이 저장소에 쓰기 404로 안 되는 경우 이 방식이 확실히 동작한다.
+- GitHub App 방식:
+  - **LH_GITHUB_REPO** — push할 저장소 (예: `hyunu/licensehub-distribution`)
+  - **LH_GITHUB_APP_ID** — GitHub App ID (Developer settings)
+  - **LH_GITHUB_INSTALLATION_ID** — 앱 설치 번호 (설치 URL의 숫자)
+  - **LH_GITHUB_APP_PRIVATE_KEY** — GitHub App 개인키 PEM 전체. 프로비저닝이
+    `/opt/licensehub/app.pem`으로 저장하고 `.env`에 경로를 기록한다.
 
 ### 2. 1회 환경 구축 (프로비저닝)
 

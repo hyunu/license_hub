@@ -61,8 +61,7 @@ struct InstallationResp {
 
 /// GitHub Repository 동기화 클라이언트.
 ///
-/// GitHub App 자격증명으로 설치 토큰을 발급받아 인증서/Blacklist/공개키를
-/// Repository에 push한다. Personal Access Token은 사용하지 않는다.
+/// 인증은 PAT 또는 GitHub App 설치 토큰을 지원한다.
 pub struct GitHubClient {
     config: GitHubConfig,
     client: reqwest::blocking::Client,
@@ -77,27 +76,47 @@ impl GitHubClient {
         Self { config, client }
     }
 
+    fn is_pat_mode(&self) -> bool {
+        self.config.pat.is_some()
+    }
+
+    /// API 요청에 쓰는 인증 토큰. PAT가 있으면 PAT, 없으면 App 설치 토큰.
+    fn auth_token(&self) -> Result<String, String> {
+        if let Some(pat) = &self.config.pat {
+            return Ok(pat.clone());
+        }
+        self.app_installation_token().map(|t| t.token)
+    }
+
     /// GitHub App 인증 JWT (max 10분) 를 만든다.
     fn app_jwt(&self) -> Result<String, String> {
+        let app_id = self.config.app_id.ok_or("GITHUB_APP_ID not set")?;
         let now = OffsetDateTime::now_utc().unix_timestamp();
         let claims = AppJwtClaims {
-            iss: self.config.app_id,
+            iss: app_id,
             iat: now,
             exp: now + 600,
         };
-        let key = EncodingKey::from_rsa_pem(self.config.private_key.as_bytes())
-            .map_err(|e| format!("invalid GitHub App private key: {e}"))?;
+        let key = EncodingKey::from_rsa_pem(
+            self.config
+                .private_key
+                .as_deref()
+                .ok_or("GITHUB_APP_PRIVATE_KEY not set")?
+                .as_bytes(),
+        )
+        .map_err(|e| format!("invalid GitHub App private key: {e}"))?;
         encode(&Header::new(Algorithm::RS256), &claims, &key)
             .map_err(|e| format!("failed to sign app jwt: {e}"))
     }
 
     /// GitHub App 설치 토큰을 발급받는다.
-    fn installation_token(&self) -> Result<InstallationTokenInfo, String> {
+    fn app_installation_token(&self) -> Result<InstallationTokenInfo, String> {
         let jwt = self.app_jwt()?;
-        let url = format!(
-            "{API}/app/installations/{}/access_tokens",
-            self.config.installation_id
-        );
+        let installation_id = self
+            .config
+            .installation_id
+            .ok_or("GITHUB_INSTALLATION_ID not set")?;
+        let url = format!("{API}/app/installations/{installation_id}/access_tokens");
         let resp = self
             .client
             .post(url)
@@ -166,8 +185,8 @@ impl GitHubClient {
 
     /// Repository의 한 파일을 새로 쓰거나 갱신한다.
     fn write_file(&self, path: &str, content_b64: &str, message: &str) -> Result<(), String> {
-        let info = self.installation_token()?;
-        self.check_repo_access(&info.token)?;
+        let token = self.auth_token()?;
+        self.check_repo_access(&token)?;
         let repo_path = format!("{}/{}/{}", self.config.owner, self.config.repo, path);
 
         let get_url = format!("{API}/repos/{repo_path}");
@@ -176,7 +195,7 @@ impl GitHubClient {
                 .client
                 .get(&get_url)
                 .header("Accept", "application/vnd.github+json")
-                .header("Authorization", format!("Bearer {}", info.token))
+                .header("Authorization", format!("Bearer {token}"))
                 .send()
                 .map_err(|e| format!("github read failed: {e}"))?;
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -199,20 +218,33 @@ impl GitHubClient {
             .client
             .put(put_url)
             .header("Accept", "application/vnd.github+json")
-            .header("Authorization", format!("Bearer {}", info.token))
+            .header("Authorization", format!("Bearer {token}"))
             .json(&body)
             .send()
             .map_err(|e| format!("github write failed: {e}"))?;
         if !resp.status().is_success() {
+            let auth_mode = if self.is_pat_mode() {
+                "PAT".to_string()
+            } else {
+                format!(
+                    "App(토큰권한={:?}, 저장소선택={:?}, 토큰접근저장소={:?}, 앱권한={:?}, 설치권한={:?})",
+                    self.app_installation_token()
+                        .map(|t| t.permissions)
+                        .unwrap_or_default(),
+                    self.app_installation_token()
+                        .map(|t| t.repository_selection)
+                        .unwrap_or_default(),
+                    self.app_installation_token()
+                        .map(|t| t.repositories)
+                        .unwrap_or_default(),
+                    self.app_declared_permissions().unwrap_or_default(),
+                    self.installation_effective_permissions()
+                        .unwrap_or_default(),
+                )
+            };
             return Err(format!(
-                "github write error: {}\n진단: 토큰 권한={:?}, 저장소선택={:?}, 토큰접근저장소={:?}, 앱 권한={:?}, 설치 권한={:?}",
-                self.error_detail(resp),
-                info.permissions,
-                info.repository_selection,
-                info.repositories,
-                self.app_declared_permissions().unwrap_or_default(),
-                self.installation_effective_permissions()
-                    .unwrap_or_default(),
+                "github write error: {} [인증: {auth_mode}]",
+                self.error_detail(resp)
             ));
         }
         Ok(())
@@ -242,7 +274,11 @@ impl GitHubClient {
     /// 이 값이 'read'면 설치가 write를 승인하지 않은 것이다.
     fn installation_effective_permissions(&self) -> Result<HashMap<String, String>, String> {
         let jwt = self.app_jwt()?;
-        let url = format!("{API}/app/installations/{}", self.config.installation_id);
+        let installation_id = self
+            .config
+            .installation_id
+            .ok_or("GITHUB_INSTALLATION_ID not set")?;
+        let url = format!("{API}/app/installations/{installation_id}");
         let resp = self
             .client
             .get(&url)
