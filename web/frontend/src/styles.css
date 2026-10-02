@@ -130,16 +130,6 @@ a { color: inherit; }
 .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .stat .v { font: 18px/1.2 var(--serif); margin-top: 5px; }
 
-/* ---------- 두 컬럼 (비대칭) ---------- */
-.cols {
-  display: grid; grid-template-columns: 2fr 1fr;
-  border: 1px solid var(--line); border-radius: 2px; background: var(--panel);
-}
-.cols .col { min-width: 0; }
-.cols .col + .col { border-left: 1px solid var(--line); }
-.col-head { padding: 10px 14px; border-bottom: 1px solid var(--line); font-family: var(--serif); font-size: 15px; }
-.cols .col-body { padding: 6px 0; }
-
 /* ---------- 폼 ---------- */
 .form-strip {
   border: 1px solid var(--line); border-top: 3px solid var(--ink);
