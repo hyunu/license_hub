@@ -147,7 +147,7 @@ export function Licenses() {
               <label className="f">만료일
                 <input type="datetime-local" value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
               </label>
-              <label className="f">메타정보
+              <label className="f wide">메타정보
                 <input value={form.metadata} onChange={(e) => set('metadata', e.target.value)} placeholder="예: 고객사명, 계약번호" />
               </label>
             </div>

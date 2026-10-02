@@ -156,6 +156,7 @@ a { color: inherit; }
   border-radius: 2px; background: var(--panel); padding: 14px; margin: 0 0 18px;
 }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end; }
+.form-grid .wide { grid-column: 1 / -1; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 label.f { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 input, select {
