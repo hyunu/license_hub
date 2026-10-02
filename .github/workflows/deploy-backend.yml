@@ -4,8 +4,9 @@ name: Deploy Backend to Oracle
 # - 수동: Actions 탭 → Deploy Backend to Oracle → Run workflow
 # - 자동: main 브랜치에서 core/ 또는 web/backend/ 변경 push 시
 #
-# 인스턴스 CPU 아키텍처를 감지해 aarch64/x86_64 musl 정적 바이너리를
-# 빌드한다. musl 정적 바이너리는 glibc 버전·배포판 차이와 무관하게 실행된다.
+# 인스턴스 CPU 아키텍처를 감지해 cross(Docker)로 aarch64/x86_64 musl 정적
+# 바이너리를 빌드한다. musl 정적 바이너리는 glibc 버전·배포판과 무관하게
+# 실행된다.
 
 on:
   workflow_dispatch:
@@ -22,8 +23,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
 
       - name: Detect instance architecture
         id: arch
@@ -39,37 +38,31 @@ jobs:
           echo "Detected instance arch: ${ARCH}"
           rm -f /tmp/lh_key
 
-      - name: Install cross toolchain
-        env:
-          ARCH: ${{ steps.arch.outputs.arch }}
+      - name: Install cross
         run: |
-          if [ "${ARCH}" = "aarch64" ] || [ "${ARCH}" = "arm64" ]; then
-            # aarch64 musl 크로스 툴체인: zig (musl libc 내장, 정적 바이너리)
-            curl -fsSL https://ziglang.org/download/0.14.0/zig-linux-x86_64-0.14.0.tar.xz -o /tmp/zig.tar.xz
-            tar -xJf /tmp/zig.tar.xz -C /tmp
-            echo "/tmp/zig-linux-x86_64-0.14.0" >> "$GITHUB_PATH"
-            /tmp/zig-linux-x86_64-0.14.0/zig version
-          else
-            sudo apt-get update -y
-            sudo apt-get install -y musl-tools
-          fi
+          curl -fsSL https://github.com/cross-rs/cross/releases/latest/download/cross-x86_64-unknown-linux-musl.tar.gz -o /tmp/cross.tgz
+          tar -xzf /tmp/cross.tgz -C /tmp
+          sudo mv /tmp/cross /usr/local/bin/
+          cross --version
 
-      - name: Build backend (musl static)
+      - name: Build backend (cross, musl static)
         run: |
           if [ "${ARCH}" = "aarch64" ] || [ "${ARCH}" = "arm64" ]; then
-            echo "==> building aarch64-unknown-linux-musl (zig cc)"
-            cargo build --release --target aarch64-unknown-linux-musl
+            TARGET=aarch64-unknown-linux-musl
           else
-            echo "==> building x86_64-unknown-linux-musl (musl-gcc)"
-            cargo build --release --target x86_64-unknown-linux-musl
+            TARGET=x86_64-unknown-linux-musl
           fi
-        working-directory: web/backend
-        env:
-          ARCH: ${{ steps.arch.outputs.arch }}
-          CC_aarch64_unknown_linux_musl: "zig cc -target aarch64-linux-musl"
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: "zig cc -target aarch64-linux-musl"
-          CC_x86_64_unknown_linux_musl: musl-gcc
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          echo "==> building ${TARGET}"
+          # path 의존성(../../core)이 cross 컨테이너에 마운트되도록 루트 워크스페이스 임시 생성
+          cat > Cargo.toml <<'EOF'
+          [workspace]
+          resolver = "2"
+          members = ["web/backend"]
+          EOF
+          cross build --workspace --release --target "${TARGET}"
+          BIN=$(find . -path "*${TARGET}/release/licensehub-web-backend" -type f | head -1)
+          echo "binary: ${BIN}"
+          cp "${BIN}" ./licensehub-web-backend.musl
 
       - name: Upload binary over SSH
         uses: appleboy/scp-action@v0.1.7
@@ -78,7 +71,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: web/backend/target/${{ steps.arch.outputs.arch }}-unknown-linux-musl/release/licensehub-web-backend
+          source: licensehub-web-backend.musl
           target: ~/licensehub-bin
 
       - name: Restart service over SSH
@@ -90,13 +83,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
-            ARCH=$(uname -m)
-            case "$ARCH" in
-              aarch64|arm64) TARGET=aarch64-unknown-linux-musl ;;
-              *) TARGET=x86_64-unknown-linux-musl ;;
-            esac
-            echo "installing binary for arch: ${ARCH} (${TARGET})"
-            sudo cp "$HOME/licensehub-bin/web/backend/target/${TARGET}/release/licensehub-web-backend" /opt/licensehub/bin/
+            sudo cp "$HOME/licensehub-bin/licensehub-web-backend.musl" /opt/licensehub/bin/licensehub-web-backend
             sudo chmod +x /opt/licensehub/bin/licensehub-web-backend
             sudo systemctl restart licensehub-web
             sleep 3
