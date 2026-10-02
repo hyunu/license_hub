@@ -33,6 +33,7 @@ struct InstallationReposResp {
 #[derive(Deserialize)]
 struct InstallationRepo {
     full_name: String,
+    #[serde(default)]
     permissions: HashMap<String, String>,
 }
 
@@ -105,9 +106,11 @@ impl GitHubClient {
         if !resp.status().is_success() {
             return Err(format!("github repo check error: {}", resp.status()));
         }
-        let body: InstallationReposResp = resp
-            .json()
-            .map_err(|e| format!("github repo check parse: {e}"))?;
+        let text = resp
+            .text()
+            .map_err(|e| format!("github repo check read body: {e}"))?;
+        let body: InstallationReposResp = serde_json::from_str(&text)
+            .map_err(|e| format!("github repo check parse: {e} body={text}"))?;
 
         let target = format!("{}/{}", self.config.owner, self.config.repo);
         match body.repositories.iter().find(|r| r.full_name == target) {
