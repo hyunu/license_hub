@@ -41,7 +41,7 @@ jobs:
         run: |
           printf '%s\n' "$KEY" > /tmp/ci_key
           chmod 600 /tmp/ci_key
-          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'echo "--- Caddyfile line1 hex ---"; head -1 /etc/caddy/Caddyfile | xxd | head -5; echo "--- Caddyfile line1 base64 ---"; head -1 /etc/caddy/Caddyfile | base64; echo "--- bootstrap.sh DOMAIN line ---"; grep -n "DOMAIN=" /opt/licensehub/bootstrap.sh | head -3; echo "--- last provision env PROXY (len) ---"; wc -c < /opt/licensehub/.env'
+          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'D=$(head -1 /etc/caddy/Caddyfile | awk "{print \$1}"); [ "$D" = "168.110.123.142.sslip.io" ] && echo "DOMAIN MATCH" || { echo "DOMAIN MISMATCH, len=${#D}"; echo -n "$D" | base64; }; grep -c "sslip.io" /etc/caddy/Caddyfile; sudo find /var/lib/caddy/.local/share/caddy/certificates -type f 2>/dev/null | wc -l'
       - name: Network diagnostic
         env:
           KEY: ${{ secrets.SSH_PRIVATE_KEY }}
