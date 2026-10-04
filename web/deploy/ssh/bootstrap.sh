@@ -12,6 +12,24 @@ export DEBIAN_FRONTEND=noninteractive
 echo "==> 디렉터리 생성"
 mkdir -p /opt/licensehub/bin /opt/licensehub/data /opt/licensehub/frontend
 
+echo "==> 스왑 설정 (소형 인스턴스 OOM 방지)"
+if ! swapon --show | grep -q .; then
+    if [ ! -f /swapfile ]; then
+        if command -v fallocate >/dev/null 2>&1; then
+            fallocate -l 2G /swapfile
+        else
+            dd if=/dev/zero of=/swapfile bs=1M count=2048
+        fi
+        chmod 600 /swapfile
+    fi
+    mkswap /swapfile >/dev/null
+    swapon /swapfile
+    grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    echo "    swap 활성화: $(swapon --show | tail -1)"
+else
+    echo "    이미 swap 있음"
+fi
+
 echo "==> 패키지 매니저 감지"
 if command -v dnf >/dev/null 2>&1; then
     PKG=dnf
@@ -44,7 +62,18 @@ if ! command -v caddy >/dev/null 2>&1; then
         aarch64|arm64) A=arm64 ;;
         *) A=amd64 ;;
     esac
-    curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v2.8.4/caddy_2.8.4_linux_${A}.tar.gz" -o /tmp/caddy.tgz
+    echo "    arch: $(uname -m) → caddy_2.8.4_linux_${A}.tar.gz"
+    URL="https://github.com/caddyserver/caddy/releases/download/v2.8.4/caddy_2.8.4_linux_${A}.tar.gz"
+    OK=0
+    for i in 1 2 3; do
+        if curl -fsSL "${URL}" -o /tmp/caddy.tgz; then
+            OK=1
+            break
+        fi
+        echo "    다운로드 실패(${i}/3), 3초 후 재시도"
+        sleep 3
+    done
+    [ "${OK}" = 1 ] || { echo "caddy 다운로드 실패" >&2; exit 1; }
     tar -xzf /tmp/caddy.tgz -C /tmp caddy
     mv /tmp/caddy /usr/local/bin/caddy
     curl -fsSL "https://raw.githubusercontent.com/caddyserver/caddy/master/dist/init/linux-systemd/caddy.service" -o /etc/systemd/system/caddy.service
