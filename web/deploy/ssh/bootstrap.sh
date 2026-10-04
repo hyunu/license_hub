@@ -118,7 +118,17 @@ if command -v firewall-cmd >/dev/null 2>&1; then
 fi
 if command -v ufw >/dev/null 2>&1; then
     # Ubuntu (ufw)
+    ufw allow 22/tcp >/dev/null 2>&1 || true
     ufw allow 80,443/tcp >/dev/null 2>&1 || true
+fi
+if command -v iptables >/dev/null 2>&1; then
+    # 호스트 iptables 기본 REJECT가 80/443을 막지 않도록 허용 규칙 삽입
+    iptables -I INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+    iptables -I INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
+    # 재부팅 시 유지 (가능한 경우)
+    if command -v netfilter-persistent >/dev/null 2>&1; then
+        netfilter-persistent save >/dev/null 2>&1 || true
+    fi
 fi
 
 systemctl enable caddy
