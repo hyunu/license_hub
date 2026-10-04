@@ -100,7 +100,9 @@ GitHub Actions는 `SSH_PRIVATE_KEY`의 **개인키**로만 VM에 접속한다.
 확인: 아래처럼 **일치 여부만** 출력해 검증할 수 있다.
 
 ```sh
-gh workflow run debug-ssh.yml   # 진단용 임시 워크플로우
+# VM에서 개인키의 공개키와 authorized_keys 대조
+ssh-keygen -y -f <개인키파일>          # 출력된 공개키가
+cat ~/.ssh/authorized_keys             # 이 파일에 있는지 확인
 ```
 
 ### 1-5. 시크릿 전파 지연 주의
