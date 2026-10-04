@@ -41,7 +41,7 @@ jobs:
         run: |
           printf '%s\n' "$KEY" > /tmp/ci_key
           chmod 600 /tmp/ci_key
-          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'echo "Caddyfile domain count:"; grep -c "sslip.io" /etc/caddy/Caddyfile; echo "Caddyfile lines:"; wc -l < /etc/caddy/Caddyfile; echo "storage:"; find /var/lib/caddy/.local/share/caddy/certificates -maxdepth 3 2>/dev/null | wc -l; echo "env PROXY in .env:"; grep -c "PROXY" /opt/licensehub/.env 2>/dev/null; echo "caddy version:"; caddy version 2>/dev/null || /usr/bin/caddy version'
+          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'echo "Caddyfile domain count:"; grep -c "sslip.io" /etc/caddy/Caddyfile; echo "duckdns count:"; grep -c "duckdns" /etc/caddy/Caddyfile; echo "Caddyfile raw (masked domain may show ***):"; cat /etc/caddy/Caddyfile'
       - name: Network diagnostic
         env:
           KEY: ${{ secrets.SSH_PRIVATE_KEY }}
