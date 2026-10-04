@@ -41,7 +41,7 @@ jobs:
         run: |
           printf '%s\n' "$KEY" > /tmp/ci_key
           chmod 600 /tmp/ci_key
-          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'uname -m; nproc; free -m | head -2; cat /etc/os-release | grep PRETTY_NAME'
+          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'echo "--- caddy log (최근) ---"; sudo journalctl -u caddy --no-pager -n 30 2>/dev/null | tail -30; echo "--- Caddyfile ---"; cat /etc/caddy/Caddyfile'
       - name: Network diagnostic
         env:
           KEY: ${{ secrets.SSH_PRIVATE_KEY }}
