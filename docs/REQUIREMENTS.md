@@ -439,7 +439,316 @@ GitHub Repository에는 Client가 실제 검증에 필요한 Certificate, Blackl
 11. 중첩 인증서의 모든 서명과 유효기간을 검증할 수 있다.
 12. GitHub API 일시 장애에 대한 재시도 및 복구 동작을 확인할 수 있다.
 
-## 13. 후속 결정이 필요한 항목
+## 13.5 Application 라이선스 보호 확장 요구사항 (LH-REQ)
+
+> 본 절은 "라이선스 원문을 노출하지 않으면서, APP-001에 발급된 라이선스를
+> APP-002가 재사용하지 못하게 하는 것"을 핵심 목적으로 한다.
+> 기존 1~13절 요구사항을 확장하며, **키 관리**와 **Application Binding**을
+> 명시적으로 추가한다. 식별자는 LH-REQ-001부터 시작한다.
+
+### 13.5.1 시스템 구성
+
+| 구성 | 역할 |
+|---|---|
+| P (License Payload) | 라이선스 원문 및 발급 조건 |
+| X (License Hub 검증 모듈) | 라이선스 복호화, 서명 검증, Application 검증 |
+| Y (Application 핵심 로직) | 실제 보호 대상이 되는 핵심 기능 |
+| Z (Application) | X/Y를 포함하여 실제 실행되는 응용 프로그램 |
+| LH_Pri | License Hub의 라이선스 발급용 개인키 |
+| LH_Pub | License Hub의 서명 검증용 공개키 |
+| Z_Pub | 특정 Application의 라이선스 암호화용 공개키 |
+| Z_Pri | 특정 Application만 보유하는 개인키 |
+
+기본 실행 관계:
+
+```text
+License Hub
+    │
+    │ P 생성
+    ▼
+[License Payload]
+    │
+    │ LH_Pri로 서명
+    ▼
+[Signed Payload]
+    │
+    │ Z_Pub으로 암호화
+    ▼
+[Encrypted License]
+    │
+    ▼
+Application Z
+    ├── Z_Pri
+    ├── License X
+    └── Core Logic Y
+            │
+            ▼
+      라이선스 검증 성공 → Y 활성화
+```
+
+### 13.5.2 라이선스 발급 요구사항
+
+**LH-REQ-001 — License Payload 구성**
+다음을 포함하는 Payload를 생성해야 한다.
+
+- 필수: Application ID, Target Language, Version, License Level, Owner,
+  Expired Date, Meta Data
+- 선택: Product ID, Feature ID, Issue Date, License ID, Build ID, Platform,
+  Architecture, Maximum Instance, Device Binding, Application Public Key Hash
+
+**LH-REQ-002 — Application ID는 라이선스의 핵심 식별자**
+Application ID는 단순 문자열(예: `APP-001`)만 비교해서는 안 된다.
+실제 검증에는 다음 Binding 정보가 함께 포함되어야 한다.
+
+```text
+Application ID
+        +
+Application Public Key
+        +
+Application Code/Package Identity
+```
+
+Application ID는 식별자이고, **공개키 기반의 암호학적 증명이 실제 인증 수단**이다.
+
+### 13.5.3 라이선스 서명 요구사항
+
+**LH-REQ-003 — License Payload 서명**
+
+```text
+P → Canonicalization → Hash → Sign(LH_Pri) → Signature
+검증: LH_Pub + P + Signature → Verify
+```
+
+**LH-REQ-004 — 개인키의 외부 노출 금지**
+LH_Pri는 Application, DLL, License 파일, SDK, Source Code, 설치 패키지에
+포함되어서는 안 된다. 배포되는 것은 **LH_Pub뿐**이어야 한다.
+
+### 13.5.4 라이선스 원문 보호 요구사항
+
+**LH-REQ-005 — License Payload 암호화**
+서명된 Payload는 Application의 Z_Pub으로 암호화해야 한다.
+최종 배포 License에서 다음 정보가 직접 노출되어서는 안 된다.
+
+- Application ID, Owner, Expired Date, Level, Meta Data, Feature, Version
+
+```text
+P → LH_Pri 서명 → Signed P → Z_Pub 암호화 → Encrypted License
+```
+
+**LH-REQ-006 — 라이선스 원문 직접 배포 금지**
+`license.json` / `license.xml` / `license.ini` 형태의 원문+서명만으로는
+요구사항을 만족하지 못한다. 최종 License는 **원문을 식별할 수 없는 암호문**
+형태여야 한다.
+
+**LH-REQ-007 — Base64는 암호화 수단이 아님**
+`원문 → Base64`는 보안 요구사항을 충족하지 못한다. 반드시
+`원문 → 암호화 → Binary Ciphertext → Base64` 순서로 처리한다.
+
+### 13.5.5 암호화 방식 요구사항
+
+**LH-REQ-008 — Hybrid Encryption**
+License Payload 전체를 공개키 알고리즘으로 직접 암호화하기보다
+AES-256-GCM + 공개키 래핑을 권장한다.
+
+```text
+License Payload
+      │
+      ▼
+AES-256-GCM ──► Encrypted Payload
+                 AES Session Key
+                      │
+                      ▼ Z_Pub
+                 Encrypted AES Key
+
+License {
+    Version, KeyID, EncryptedKey, Nonce, Ciphertext,
+    AuthenticationTag, Signature
+}
+```
+
+### 13.5.6 Application 개인키 요구사항
+
+**LH-REQ-009 — Application별 키쌍**
+각 Application은 고유한 Key Pair를 가져야 한다. `Z_Pub_001`으로 암호화된
+License는 `Z_Pri_002`로 복호화할 수 없어야 한다.
+
+**LH-REQ-010 — Application 개인키 보호**
+Z_Pri는 가능한 OS 보안 저장소에 저장한다.
+
+- Windows: Windows Certificate Store, CNG Key Storage, TPM, DPAPI
+- 형태: `Z_Pri → TPM/OS Key Store`
+
+**LH-REQ-011 — Private Key Export 방지**
+`app.key` / `private.pem` / `config.json` / `license.key` 등 일반 파일로
+존재해서는 안 되며, 소스코드에 `const char* PRIVATE_KEY = "...";` 형태로도
+저장하지 않는다.
+
+### 13.5.7 License Hub 검증 순서
+
+X는 다음 순서로 검증하며, **하나라도 실패하면 Deactivated** 상태가 된다.
+
+```text
+① License 수신 → ② 구조 검증 → ③ Application Key 확인 → ④ 복호화
+→ ⑤ LH_Pub 서명 검증 → ⑥ Application ID → ⑦ Version → ⑧ Level
+→ ⑨ Owner → ⑩ Expiration → ⑪ Meta Data → ⑫ Application Binding → ⑬ Activated
+```
+
+### 13.5.8 실행 중 Application 검증
+
+**LH-REQ-012 — Challenge-Response**
+X는 Application 실행 시 임의의 Challenge(Nonce)를 생성하고, Z가 Z_Pri로
+서명한 값을 X가 등록된 Z_Pub으로 검증한다. License 파일만 복사한 공격자는
+정상적인 Z_Pri가 없으므로 활성화할 수 없다.
+
+```text
+X ── Random Nonce ──► Z ── Sign(Z_Pri, Nonce + SessionInfo) ──► X ── Z_Pub 검증 ──► PASS
+```
+
+### 13.5.9 Application ID 생성 요구사항
+
+**LH-REQ-013 — 언어별 Application ID 규칙 표준화**
+C/C++/Rust/C# 등 언어에 따라 임의로 생성하지 않는다. C# 프로젝트 GUID에만
+의존해서는 안 된다. 권장 구성:
+
+```text
+Application Identity
+    ├── Application ID
+    ├── Public Key
+    ├── Product ID
+    └── Build/Package Identity
+```
+
+필요 시 `Application ID = SHA-256(Application Public Key)` 방식으로 파생해
+공개된 ID 자체를 특정 Application Key에 연결할 수 있다.
+
+### 13.5.10 LH_Pub 내장 요구사항
+
+**LH-REQ-014 — LH_Pub 내장**
+X는 LH_Pub을 자체적으로 보유해야 하며, Application에서 전달받는 공개키를
+그대로 사용해서는 안 된다(공격자의 키로 검증 우회 방지).
+
+**LH-REQ-015 — LH_Pub 추출 난이도 향상**
+일반 문자열(`const char* pubkey = "MIIBIjAN..."`) 형태를 피하고, 분할 +
+런타임 조합 + 메모리 상 일시 복원을 적용할 수 있다. 단, 이는 RE 난이도를
+높이는 **보조수단**이다.
+
+**LH-REQ-016 — LH_Pub 메모리 최소 보유**
+복원된 LH_Pub은 검증에 필요한 최소 시간 동안만 메모리에 존재하고, 검증
+완료 후 Secure Zeroization한다. 공개키이므로 핵심 보안 요소는 아니며,
+**LH_Pri 보호가 훨씬 중요하다.**
+
+### 13.5.11 AK1 (Z_Pri) 보호 요구사항
+
+**LH-REQ-017 — AK1 추출 난이도**
+AK1을 단순 DLL/EXE 내부 문자열로 저장해서는 안 된다. 권장 우선순위:
+
+1. TPM / Hardware-backed Key
+2. OS Secure Key Store
+3. OS Protected Key
+4. 소프트웨어 암호화 저장
+5. 난독화된 Binary 내장 (최후의 수단)
+
+### 13.5.12 재사용·Replay 방지
+
+**LH-REQ-018 — License Copy 방지**
+APP-001용 License를 APP-002에 복사하면 반드시 실패해야 한다.
+`Z_Pri_001` ↔ `License_001`은 PASS, `Z_Pri_002` ↔ `License_001`은 FAIL.
+
+**LH-REQ-019 — Session Binding / Replay 방지**
+검증에 Random Nonce, Session ID, Application Identity, Timestamp 등을
+포함하며, Challenge-Response는 **매 실행 시 새로 생성**해야 한다.
+
+### 13.5.13 만료 검증
+
+**LH-REQ-020 — 만료 검증**
+`Current Date > Expired Date → Deactivated`. 시스템 시간 롤백에 대비해 높은
+보안 수준이 필요하면 별도 시간 검증 정책(서버 시간, TPM 시간 등)을 둔다.
+
+### 13.5.14 Y 핵심 로직 보호
+
+**LH-REQ-021 — Y는 검증 성공 후에만 활성화**
+`if (LicenseValid()) return TRUE;` 같은 구조는 Patch에 취약하다.
+X가 검증 후 **짧은 수명의 Activation Token**을 발급하고, Y는 Token 없이는
+핵심 API를 실행하지 않는다. Token은 Application ID, Session ID, Feature,
+Expiration, Nonce에 바인딩한다.
+
+**LH-REQ-022 — DLL 단독 실행 방지**
+X/Y DLL을 다른 Application에서 직접 로딩해도 핵심 기능이 실행되지 않아야
+한다. APP-002가 동일 DLL을 로딩하면 FAIL이어야 한다.
+
+### 13.5.15 무결성 검증
+
+**LH-REQ-023 — Application 무결성 검증**
+가능한 경우 실행 파일/패키지 무결성을 검증한다.
+
+```text
+Application Code → Hash → Registered Build Identity → Compare
+```
+
+OS Code Signing / Package Identity를 활용하되, Application Private Key와
+결합해 사용하는 것이 좋다.
+
+### 13.5.16 오류 처리
+
+**LH-REQ-024 — 오류 원인 비노출**
+내부적으로 ERR_SIGNATURE / ERR_DECRYPT / ERR_APPLICATION / ERR_EXPIRED /
+ERR_VERSION / ERR_OWNER / ERR_FEATURE / ERR_KEY 등을 관리할 수 있으나,
+Application에는 가급적 `LICENSE_INVALID` 정도로만 반환한다.
+
+### 13.5.17 로그 요구사항
+
+**LH-REQ-025 — 보안 이벤트 로그**
+License Load, Validation, Signature, Application Binding, Activation,
+Deactivation, Expiration, Invalid License를 로그에 남긴다. 단, License
+Plaintext, Private Key, Decrypted Secret, AES Key는 로그에 남기지 않는다.
+
+### 13.5.18 메모리 보안
+
+**LH-REQ-026 — Plaintext 최소 보유**
+복호화된 Payload와 키는 필요한 최소 시간 동안만 메모리에 존재해야 한다.
+`Decrypt → Validate → 필요한 결과만 추출 → Plaintext 제거`.
+
+### 13.5.19 언어 요구사항
+
+**LH-REQ-027 — X/Y 구현 언어**
+X와 Y는 메모리 안전성·바이너리 보안성을 고려해 C/C++ 또는 Rust로 구현할
+수 있어야 한다. Rust의 목적은 Memory Safety, Buffer Overflow 방지,
+Use-after-free 방지, Undefined Behavior 감소이며, 라이선스 보호 자체는
+암호화/인증/Binding 구조로 보장한다.
+
+### 13.5.20 보안 수준별 요구사항
+
+| 등급 | 요구사항 |
+|---|---|
+| 기본 | License 서명 |
+| 중간 | License 암호화 + 서명 |
+| 높음 | Application별 Public/Private Key |
+| 높음 | Application Private Key 보호 |
+| 매우 높음 | Challenge-Response |
+| 매우 높음 | OS/TPM Hardware-backed Key |
+| 매우 높음 | Application Code/Package Identity Binding |
+| 최고 | Remote Attestation / 서버 기반 검증 |
+
+### 13.5.21 추가 RS 요구사항 (RS-10 ~ RS-14)
+
+| ID | 핵심 요구사항 |
+|---|---|
+| RS-10 | License는 Application별 공개키에 암호학적으로 종속되어야 한다. |
+| RS-11 | Application Private Key는 일반 파일/소스코드에 평문으로 저장되지 않아야 한다. |
+| RS-12 | X는 License 검증뿐 아니라 Application이 해당 Private Key를 실제 보유하고 있음을 Challenge-Response로 검증해야 한다. |
+| RS-13 | Y의 핵심 기능은 License 검증 결과가 아닌 검증된 Activation Token이 있어야 실행되어야 한다. |
+| RS-14 | 동일한 License 파일을 다른 Application으로 복사하여 사용할 수 없어야 한다. |
+
+### 13.5.22 가장 중요한 보완점
+
+- **Z_Pri(AK1)를 APP-001 내부에 평문으로 두지 않는다.** 단순 EXE/DLL 내장은
+  공격자가 AK1을 추출할 수 있어 약점이다. 최종 설계는
+  `APP-001 → AK1 → OS Secure Storage → TPM` 방향으로 구성한다.
+- **LH_Pub 난독화보다 Z_Pri 보호가 훨씬 중요하다.** LH_Pub은 공개키라
+  노출돼도 원칙적으로 보안이 깨지지 않지만, Z_Pri가 노출되면 APP-001의
+  신원을 다른 프로그램이 사칭할 수 있다.
+
+## 14. 후속 결정이 필요한 항목
 
 다음 항목은 구현 전에 별도로 확정해야 한다.
 
@@ -453,3 +762,12 @@ GitHub Repository에는 Client가 실제 검증에 필요한 Certificate, Blackl
 - License 발급·재발급·양도 정책
 - 개인정보 및 Device Metadata 보관 기간
 - SLA, 예상 발급량 및 동시 활성화 요청량
+
+Application 보호(LH-REQ) 추가 확정 항목:
+
+- Application별 키쌍(Z_Pub/Z_Pri)의 발급·배포·폐기 절차
+- Z_Pri 저장 방식 (TPM / OS Key Store / 보호 저장소 중 선택)
+- Application ID 파생 규칙 (SHA-256(Public Key) 방식 채택 여부)
+- Activation Token 구조·수명·갱신 주기
+- Challenge-Response 세부 규칙 (Nonce 크기, SessionInfo 구성)
+- X/Y 모듈의 난독화 수준과 LH_Pub 분산 저장 방식
