@@ -42,3 +42,13 @@ jobs:
           printf '%s\n' "$KEY" > /tmp/ci_key
           chmod 600 /tmp/ci_key
           ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'uname -m; nproc; free -m | head -2; cat /etc/os-release | grep PRETTY_NAME'
+      - name: Network diagnostic
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          printf '%s\n' "$KEY" > /tmp/ci_key
+          chmod 600 /tmp/ci_key
+          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'echo "--- caddy ---"; systemctl is-active caddy; ss -tlnp | grep -E ":(80|443|8080) "; echo "--- ufw ---"; ufw status 2>/dev/null || echo "ufw not installed"; echo "--- iptables ---"; sudo iptables -L -n 2>/dev/null | head -20 || echo "no iptables access"'
