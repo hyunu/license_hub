@@ -32,3 +32,13 @@ jobs:
           chmod 600 /tmp/ci_key
           echo "=== ssh verbose ==="
           ssh -vvv -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'echo CONNECT_OK' 2>&1 | grep -iE "Offering|Authentications|method|accepted|denied|Permission|CONNECT_OK|loaded|identity|no supported" | head -20
+      - name: VM info
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          printf '%s\n' "$KEY" > /tmp/ci_key
+          chmod 600 /tmp/ci_key
+          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'uname -m; nproc; free -m | head -2; cat /etc/os-release | grep PRETTY_NAME'
