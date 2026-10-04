@@ -41,7 +41,7 @@ jobs:
         run: |
           printf '%s\n' "$KEY" > /tmp/ci_key
           chmod 600 /tmp/ci_key
-          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'echo "--- certs dir ---"; sudo ls -laR /var/lib/caddy/.local/share/caddy/certificates 2>/dev/null | head -40; echo "--- ACME 오류 로그 ---"; sudo journalctl -u caddy --no-pager --since "10 min ago" 2>/dev/null | grep -iE "acme|obtain|challenge|error|failed|http_01|tls-alpn|rate" | tail -25'
+          ssh -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'echo "--- full caddy log since boot ---"; sudo journalctl -u caddy --no-pager 2>/dev/null | tail -60'
       - name: Network diagnostic
         env:
           KEY: ${{ secrets.SSH_PRIVATE_KEY }}
