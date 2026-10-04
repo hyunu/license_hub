@@ -37,6 +37,43 @@ int32_t lh_verify_trusted_certificate(
     uint32_t *result_code
 );
 
+/* Decrypts an EncryptedLicense envelope with the application private key
+ * (Z_Pri). Returns 0 when processed (result_code=0 on success), -1 for
+ * invalid arguments, -2 for parse/decrypt failures, or -3 for envelope
+ * signature/application mismatch. The envelope is validated with LH_Pub and
+ * bound to the application key pair (LH-REQ-008, LH-REQ-012). */
+int32_t lh_decrypt_license(
+    const uint8_t *envelope,
+    size_t envelope_len,
+    const uint8_t *z_private_key,
+    size_t z_private_key_len,
+    const uint8_t *lh_public_key,
+    size_t lh_public_key_len,
+    uint32_t *result_code
+);
+
+/* Verifies an application challenge-response signature (LH-REQ-012).
+ * Returns 0 on success, -1 for invalid arguments, -2 for parse failures,
+ * or 1 when the signature does not match Z_Pub. */
+int32_t lh_verify_challenge(
+    const uint8_t *z_public_key,
+    size_t z_public_key_len,
+    const uint8_t *challenge,
+    size_t challenge_len,
+    const uint8_t *signature_b64,
+    size_t signature_b64_len
+);
+
+/* Derives the application ID (SHA-256 of Z_Pub, LH-REQ-013) into out.
+ * Returns 0 on success, -1 for invalid arguments. out must hold at least
+ * 64 bytes; the result is NUL-terminated URL-safe Base64. */
+int32_t lh_application_id(
+    const uint8_t *z_public_key,
+    size_t z_public_key_len,
+    uint8_t *out,
+    size_t out_len
+);
+
 #ifdef __cplusplus
 }
 #endif

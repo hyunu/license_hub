@@ -44,6 +44,40 @@ int main(int argc, char **argv) {
     fails += verify_pair(base, "l3.json", "context_l3.json", licensehub::VerificationCode::Valid);
     fails += verify_pair(base, "l1_tampered.json", "context_l1.json", licensehub::VerificationCode::InvalidSignature);
 
+    // LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화.
+    {
+        auto env = read_file(base + "/envelope.json");
+        auto zkey = read_file(base + "/z_private_key.bin");
+        auto lhkey = read_file(base + "/public_key.bin");
+        auto result = licensehub::LicenseGuard::decrypt_license(env, zkey, lhkey);
+        bool pass = result.status == 0 && result.code == 0;
+        std::cout << "  envelope.json: status=" << result.status
+                  << " code=" << result.code << (pass ? "  PASS" : "  FAIL") << "\n";
+        if (!pass) fails++;
+    }
+
+    // LH-REQ-012: Challenge-Response 검증.
+    {
+        auto zpub = read_file(base + "/z_public_key.bin");
+        auto chal = read_file(base + "/challenge.json");
+        auto sig = read_file(base + "/challenge_signature.b64");
+        auto chal_str = std::string(chal.begin(), chal.end());
+        auto sig_str = std::string(sig.begin(), sig.end());
+        int32_t status = licensehub::LicenseGuard::verify_challenge(zpub, chal_str, sig_str);
+        bool pass = status == 0;
+        std::cout << "  challenge: status=" << status << (pass ? "  PASS" : "  FAIL") << "\n";
+        if (!pass) fails++;
+    }
+
+    // LH-REQ-013: Application ID 파생.
+    {
+        auto zpub = read_file(base + "/z_public_key.bin");
+        std::string app_id = licensehub::LicenseGuard::application_id(zpub);
+        bool pass = app_id.size() == 43;
+        std::cout << "  application_id: " << app_id << (pass ? "  PASS" : "  FAIL") << "\n";
+        if (!pass) fails++;
+    }
+
     if (fails != 0) {
         std::cout << "FAIL (" << fails << ")\n";
         return 1;

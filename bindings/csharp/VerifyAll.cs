@@ -34,6 +34,37 @@ internal static class Program
             if (!pass) fails++;
         }
 
+        // LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화.
+        {
+            VerifyResult env = LicenseGuard.DecryptLicense(
+                File.ReadAllBytes(Path.Combine(baseDir, "envelope.json")),
+                File.ReadAllBytes(Path.Combine(baseDir, "z_private_key.bin")),
+                publicKey);
+            bool pass = env.Status == 0 && env.Code == VerificationCode.Valid;
+            Console.WriteLine($"  {"envelope.json",-18} status={env.Status} code={env.Code}  {(pass ? "PASS" : "FAIL")}");
+            if (!pass) fails++;
+        }
+
+        // LH-REQ-012: Challenge-Response 검증.
+        {
+            int status = LicenseGuard.VerifyChallenge(
+                File.ReadAllBytes(Path.Combine(baseDir, "z_public_key.bin")),
+                File.ReadAllBytes(Path.Combine(baseDir, "challenge.json")),
+                File.ReadAllBytes(Path.Combine(baseDir, "challenge_signature.b64")));
+            bool pass = status == 0;
+            Console.WriteLine($"  {"challenge",-18} status={status}  {(pass ? "PASS" : "FAIL")}");
+            if (!pass) fails++;
+        }
+
+        // LH-REQ-013: Application ID 파생.
+        {
+            string appId = LicenseGuard.ApplicationId(
+                File.ReadAllBytes(Path.Combine(baseDir, "z_public_key.bin")));
+            bool pass = appId.Length == 43;
+            Console.WriteLine($"  {"application_id",-18} {appId}  {(pass ? "PASS" : "FAIL")}");
+            if (!pass) fails++;
+        }
+
         if (fails != 0)
         {
             Console.WriteLine($"FAIL ({fails})");

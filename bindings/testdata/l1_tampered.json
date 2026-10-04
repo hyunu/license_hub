@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "certificate_id": "YCBwsxg3o2MjJZ2g",
+  "certificate_id": "1U0-f-5B72GUFmHa",
   "license_id": "fixture-l1",
   "level": 1,
   "product": "Tampered",
@@ -12,5 +12,5 @@
   "children": [],
   "signature_algorithm": "Ed25519",
   "key_id": "fixture-key",
-  "signature": "z8IBv_h97o3PjULOkAlqpQapq-Ib8RiDb57WIskx_G5Oe-iXk-zJT77cflXUhNcA2WbypzFLkyitP5ohLqr9CQ"
+  "signature": "8MIlQZV3UPEt4VAEzB_wHLZFL_jzrS5E7jG9UJWvOPogIsn32vbCpSKisXUB6GMc7DivCa9zSpaGKB_6IlYZDw"
 }

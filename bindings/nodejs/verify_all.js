@@ -32,6 +32,38 @@ for (const [certName, ctxName, expected] of checks) {
     if (!pass) fails++;
 }
 
+// LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화.
+{
+    const env = guard.decryptLicense(
+        fs.readFileSync(path.join(base, 'envelope.json')),
+        fs.readFileSync(path.join(base, 'z_private_key.bin')),
+        publicKey
+    );
+    const pass = env.status === 0 && env.code === VerificationCode.VALID;
+    console.log(`  ${'envelope.json'.padEnd(18)} status=${env.status} code=${env.code}  ${pass ? 'PASS' : 'FAIL'}`);
+    if (!pass) fails++;
+}
+
+// LH-REQ-012: Challenge-Response 검증.
+{
+    const status = guard.verifyChallenge(
+        fs.readFileSync(path.join(base, 'z_public_key.bin')),
+        fs.readFileSync(path.join(base, 'challenge.json')),
+        fs.readFileSync(path.join(base, 'challenge_signature.b64'))
+    );
+    const pass = status === 0;
+    console.log(`  ${'challenge'.padEnd(18)} status=${status}  ${pass ? 'PASS' : 'FAIL'}`);
+    if (!pass) fails++;
+}
+
+// LH-REQ-013: Application ID 파생.
+{
+    const appId = guard.applicationId(fs.readFileSync(path.join(base, 'z_public_key.bin')));
+    const pass = appId.length === 43;
+    console.log(`  ${'application_id'.padEnd(18)} ${appId}  ${pass ? 'PASS' : 'FAIL'}`);
+    if (!pass) fails++;
+}
+
 if (fails) {
     console.log(`FAIL (${fails})`);
     process.exit(1);

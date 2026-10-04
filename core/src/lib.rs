@@ -21,6 +21,7 @@ use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use zeroize::Zeroize;
 
+pub mod envelope;
 pub mod trusted;
 
 /// 현재 프로세스(호스트 앱)의 실행 파일 이름을 반환한다.
@@ -375,6 +376,12 @@ impl Issuer {
         &self.key_id
     }
 
+    // 서명에 사용하는 개인키를 반환한다. 엔벨로프 서명 등 내부 발급
+    // 흐름에서 사용하며, Client에는 노출하지 않는다.
+    pub(crate) fn signing_key(&self) -> &SigningKey {
+        &self.signing_key
+    }
+
     //--------------------------------------------------------------------------------
     // 배포 대상 응용 SW에 내장할 검증용 공개키를 반환한다.
     // - 인자: 없음
@@ -633,7 +640,7 @@ pub fn verify(
 //         depth: 현재 체인 깊이 (루트는 0)
 // - 리턴: Ok(()) 또는 Err(VerificationError)
 //--------------------------------------------------------------------------------
-fn verify_at_depth(
+pub(crate) fn verify_at_depth(
     certificate: &Certificate,
     public_key: &VerifyingKey,
     context: &VerificationContext,
@@ -830,7 +837,7 @@ fn validate_request(request: &CertificateRequest) -> Result<(), IssueError> {
 // - 인자: certificate: 서명할 인증서
 // - 리턴: Ok(canonical 바이트열) 또는 Err(직렬화 오류 메시지)
 //--------------------------------------------------------------------------------
-fn signing_payload(certificate: &Certificate) -> Result<Vec<u8>, String> {
+pub(crate) fn signing_payload(certificate: &Certificate) -> Result<Vec<u8>, String> {
     // 서명 필드는 자기 자신을 서명할 수 없으므로 payload에서 제외한다.
     // 나머지 필드는 Value로 변환한 뒤 재귀적으로 정렬한다.
     let mut value = serde_json::to_value(certificate).map_err(|error| error.to_string())?;
@@ -851,7 +858,7 @@ fn signing_payload(certificate: &Certificate) -> Result<Vec<u8>, String> {
 //         output: 결과를 쌓을 출력 버퍼
 // - 리턴: Ok(()) 또는 Err(직렬화 오류 메시지)
 //--------------------------------------------------------------------------------
-fn write_canonical(value: &Value, output: &mut Vec<u8>) -> Result<(), String> {
+pub(crate) fn write_canonical(value: &Value, output: &mut Vec<u8>) -> Result<(), String> {
     // 객체 키 순서를 BTreeMap으로 정렬하고 배열 순서는 유지한다. 이 규칙은
     // 발급자와 검증자가 서로 다른 언어로 구현되어도 같은 바이트열을 만들기
     // 위한 핵심 호환성 규칙이다.

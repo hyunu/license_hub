@@ -90,6 +90,46 @@ public:
         }
         return key;
     }
+
+    // LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화·검증한다.
+    // status=0 성공, -1 인자 오류, -2 파싱/복호화 오류, -3 서명/App 불일치.
+    static VerifyResult decrypt_license(const std::vector<uint8_t> &envelope,
+                                        const std::vector<uint8_t> &z_private_key,
+                                        const std::vector<uint8_t> &lh_public_key) {
+        uint32_t code = UINT32_MAX;
+        int32_t status = lh_decrypt_license(
+            envelope.data(), envelope.size(),
+            z_private_key.data(), z_private_key.size(),
+            lh_public_key.data(), lh_public_key.size(),
+            &code);
+        return {status, code};
+    }
+
+    // LH-REQ-012: Challenge-Response 서명을 검증한다.
+    // 0 성공, -1 인자 오류, -2 파싱 오류, 1 서명 불일치.
+    static int32_t verify_challenge(const std::vector<uint8_t> &z_public_key,
+                                    const std::string &challenge_json,
+                                    const std::string &signature_b64) {
+        return lh_verify_challenge(
+            z_public_key.data(), z_public_key.size(),
+            reinterpret_cast<const uint8_t *>(challenge_json.data()),
+            challenge_json.size(),
+            reinterpret_cast<const uint8_t *>(signature_b64.data()),
+            signature_b64.size());
+    }
+
+    // LH-REQ-013: Application 공개키에서 Application ID(SHA-256)를 파생한다.
+    static std::string application_id(const std::vector<uint8_t> &z_public_key) {
+        char out[64] = {0};
+        int32_t status = lh_application_id(
+            z_public_key.data(), z_public_key.size(),
+            reinterpret_cast<uint8_t *>(out), sizeof(out));
+        if (status != 0) {
+            throw std::runtime_error("application_id failed: status=" +
+                                     std::to_string(status));
+        }
+        return std::string(out);
+    }
 };
 
 }  // namespace licensehub

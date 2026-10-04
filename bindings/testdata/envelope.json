@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "key_id": "fixture-key",
+  "app_id": "1-HghL4hOwHlBoUq-BmLmYC0PgN0nGfYLc0JA_QAHHc",
+  "ephemeral_public_key": "4ivZtmLuv0psQmYFsRqvpZgu0YR610NB5LCBJKKoKn4",
+  "nonce": "E2YzS6t19xFSvfrC",
+  "ciphertext": "o6E24yP3XAv1XHAW6i1tJDiV0bvUyjaWtyYsG_iZIOQrmPXZs0UKpGo-vB7wsYwiyCtwBHyfJXQ6uqb9DdpkwJVMZl2x0ZolgoaCCoMTJvXMFZx-gSQgZ5Tnymic_GuZlAj_h6wKM3lSDKnwwg02EuApqDiIUhsRqORyOBRimc3IgO3Ba0j9dh1L0P16-_jD4Oa-BdJsfl_ykOt2Te1NMl4R5oW0SC_7KV1z4NRjhKFZ9FoCniUYS0exo8jWFe_WSaH6pdTuSSMvdC1P_zgHWOO3yjtIsWw4b1cfThI3g_jEKKWmkYSjMww8j-Rwnbz4pr3HaVa2SlIoOasotXVAII3eUEuVcsF1uVEC2R4NJ-yAh0ee31tgK4hsisIJPEkkaIanoGdmH3oSjBg0WA0SEZ3ABGl32RvroJWeTVnZRW2WzdWL5JhPDz4nHPNK07kBg2KhGCdH0rWa-1h-ON4KHfrmKXIZHC5C6aGy4W44_eNrnU4KUJizLweq3UK5iUHf78xWfAlrDw3YLaRK_oSSutsh0VoBHLYjmV7bwhJB1y-N168",
+  "signature": "QMxu5RxVObv9ixQjn8xc6RcS2AZu4OWUdmAeJIL69iqTUp4jrVuRyw-DeC6HIhOEtWcDw3gE7HeN1rK-xsG7Dg"
+}

@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 
 namespace LicenseHub
@@ -81,6 +82,32 @@ namespace LicenseHub
         [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
         private static extern int lh_trusted_public_key(byte[] outKey, ref nuint outLen);
 
+        [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int lh_decrypt_license(
+            byte[] envelope,
+            nuint envelopeLen,
+            byte[] zPrivateKey,
+            nuint zPrivateKeyLen,
+            byte[] lhPublicKey,
+            nuint lhPublicKeyLen,
+            out uint resultCode);
+
+        [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int lh_verify_challenge(
+            byte[] zPublicKey,
+            nuint zPublicKeyLen,
+            byte[] challenge,
+            nuint challengeLen,
+            byte[] signatureB64,
+            nuint signatureB64Len);
+
+        [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int lh_application_id(
+            byte[] zPublicKey,
+            nuint zPublicKeyLen,
+            byte[] outKey,
+            nuint outLen);
+
         public static VerifyResult Verify(byte[] certificate, byte[] publicKey, byte[] context)
         {
             uint code;
@@ -114,6 +141,42 @@ namespace LicenseHub
                 throw new InvalidOperationException($"trusted_public_key failed: status={status}");
             }
             return outKey;
+        }
+
+        // LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화·검증한다.
+        // Status=0 성공, -1 인자 오류, -2 파싱/복호화 오류, -3 서명/App 불일치.
+        public static VerifyResult DecryptLicense(byte[] envelope, byte[] zPrivateKey, byte[] lhPublicKey)
+        {
+            uint code;
+            int status = lh_decrypt_license(
+                envelope, (nuint)envelope.Length,
+                zPrivateKey, (nuint)zPrivateKey.Length,
+                lhPublicKey, (nuint)lhPublicKey.Length,
+                out code);
+            return new VerifyResult(status, code);
+        }
+
+        // LH-REQ-012: Challenge-Response 서명을 검증한다.
+        // 0 성공, -1 인자 오류, -2 파싱 오류, 1 서명 불일치.
+        public static int VerifyChallenge(byte[] zPublicKey, byte[] challenge, byte[] signatureB64)
+        {
+            return lh_verify_challenge(
+                zPublicKey, (nuint)zPublicKey.Length,
+                challenge, (nuint)challenge.Length,
+                signatureB64, (nuint)signatureB64.Length);
+        }
+
+        // LH-REQ-013: Application 공개키에서 Application ID(SHA-256)를 파생한다.
+        public static string ApplicationId(byte[] zPublicKey)
+        {
+            byte[] outKey = new byte[64];
+            int status = lh_application_id(zPublicKey, (nuint)zPublicKey.Length, outKey, (nuint)outKey.Length);
+            if (status != 0)
+            {
+                throw new InvalidOperationException($"application_id failed: status={status}");
+            }
+            int len = Array.IndexOf(outKey, (byte)0);
+            return System.Text.Encoding.ASCII.GetString(outKey, 0, len >= 0 ? len : outKey.Length);
         }
     }
 }

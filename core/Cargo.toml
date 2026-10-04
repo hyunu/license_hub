@@ -9,7 +9,9 @@ license = "MIT"
 crate-type = ["rlib", "cdylib", "staticlib"]
 
 [dependencies]
+aes-gcm = "0.10"
 base64 = "0.22"
+curve25519-dalek = "4"
 ed25519-dalek = { version = "2", features = ["rand_core", "zeroize"] }
 getrandom = "0.3"
 rand_core = { version = "0.6", features = ["getrandom"] }

@@ -80,6 +80,21 @@ class LicenseGuard {
             'int',
             ['uint8_t *', 'size_t *']
         );
+        this._decrypt = lib.func(
+            'lh_decrypt_license',
+            'int',
+            ['uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint32_t *']
+        );
+        this._verifyChallenge = lib.func(
+            'lh_verify_challenge',
+            'int',
+            ['uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint8_t *', 'size_t']
+        );
+        this._appId = lib.func(
+            'lh_application_id',
+            'int',
+            ['uint8_t *', 'size_t', 'uint8_t *', 'size_t']
+        );
     }
 
     // certificate: 인증서 JSON 바이트(Buffer)
@@ -117,6 +132,41 @@ class LicenseGuard {
             throw new Error(`trusted_public_key failed: status=${status}`);
         }
         return Buffer.from(out);
+    }
+
+    // LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화·검증한다.
+    // status=0 성공, -1 인자 오류, -2 파싱/복호화 오류, -3 서명/App 불일치.
+    decryptLicense(envelope, zPrivateKey, lhPublicKey) {
+        const code = new Uint32Array(1);
+        const status = this._decrypt(
+            envelope, envelope.length,
+            zPrivateKey, zPrivateKey.length,
+            lhPublicKey, lhPublicKey.length,
+            code
+        );
+        return new VerifyResult(status, code[0]);
+    }
+
+    // LH-REQ-012: Challenge-Response 서명을 검증한다.
+    // 0 성공, -1 인자 오류, -2 파싱 오류, 1 서명 불일치.
+    verifyChallenge(zPublicKey, challengeJson, signatureB64) {
+        return this._verifyChallenge(
+            zPublicKey, zPublicKey.length,
+            challengeJson, challengeJson.length,
+            signatureB64, signatureB64.length
+        );
+    }
+
+    // LH-REQ-013: Application 공개키에서 Application ID(SHA-256)를 파생한다.
+    applicationId(zPublicKey) {
+        const out = new Uint8Array(64);
+        const status = this._appId(zPublicKey, zPublicKey.length, out, out.length);
+        if (status !== 0) {
+            throw new Error(`application_id failed: status=${status}`);
+        }
+        let len = 0;
+        while (len < out.length && out[len] !== 0) len++;
+        return Buffer.from(out.subarray(0, len)).toString('ascii');
     }
 }
 

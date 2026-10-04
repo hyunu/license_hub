@@ -44,6 +44,12 @@ static uint8_t *read_file(const char *path, size_t *out_len) {
     return buf;
 }
 
+static uint8_t *read_file_buf(const char *base, const char *name, size_t *out_len) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s", base, name);
+    return read_file(path, out_len);
+}
+
 static int verify_pair(const char *base, const char *cert_name,
                        const char *ctx_name, uint32_t expected_code) {
     char cert_path[512];
@@ -86,6 +92,77 @@ int main(int argc, char **argv) {
     fails += verify_pair(base, "l2.json", "context_l2.json", LH_VALID);
     fails += verify_pair(base, "l3.json", "context_l3.json", LH_VALID);
     fails += verify_pair(base, "l1_tampered.json", "context_l1.json", LH_INVALID_SIGNATURE);
+
+    /* LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화·검증 */
+    {
+        size_t env_len = 0, zkey_len = 0, lhkey_len = 0;
+        uint8_t *env = read_file_buf(base, "envelope.json", &env_len);
+        uint8_t *zkey = read_file_buf(base, "z_private_key.bin", &zkey_len);
+        uint8_t *lhkey = read_file_buf(base, "public_key.bin", &lhkey_len);
+        if (!env || !zkey || !lhkey) {
+            free(env);
+            free(zkey);
+            free(lhkey);
+            fails++;
+        } else {
+            uint32_t code = UINT32_MAX;
+            int32_t status = lh_decrypt_license(env, env_len, zkey, zkey_len,
+                                                lhkey, lhkey_len, &code);
+            int pass = (status == 0 && code == LH_VALID);
+            printf("  %-18s status=%d code=%u  %s\n", "envelope.json",
+                   status, code, pass ? "PASS" : "FAIL");
+            if (!pass) {
+                fails++;
+            }
+        }
+        free(env);
+        free(zkey);
+        free(lhkey);
+    }
+
+    /* LH-REQ-012: Challenge-Response 검증 */
+    {
+        size_t zpub_len = 0, chal_len = 0, sig_len = 0;
+        uint8_t *zpub = read_file_buf(base, "z_public_key.bin", &zpub_len);
+        uint8_t *chal = read_file_buf(base, "challenge.json", &chal_len);
+        uint8_t *sig = read_file_buf(base, "challenge_signature.b64", &sig_len);
+        if (!zpub || !chal || !sig) {
+            free(zpub);
+            free(chal);
+            free(sig);
+            fails++;
+        } else {
+            int32_t status = lh_verify_challenge(zpub, zpub_len, chal, chal_len, sig, sig_len);
+            int pass = (status == 0);
+            printf("  %-18s status=%d  %s\n", "challenge", status,
+                   pass ? "PASS" : "FAIL");
+            if (!pass) {
+                fails++;
+            }
+        }
+        free(zpub);
+        free(chal);
+        free(sig);
+    }
+
+    /* LH-REQ-013: Application ID 파생 */
+    {
+        size_t zpub_len = 0;
+        uint8_t *zpub = read_file_buf(base, "z_public_key.bin", &zpub_len);
+        if (!zpub) {
+            fails++;
+        } else {
+            uint8_t out[64] = {0};
+            int32_t status = lh_application_id(zpub, zpub_len, out, sizeof(out));
+            int pass = (status == 0 && strlen((char *)out) == 43);
+            printf("  %-18s status=%d id=%.*s  %s\n", "application_id",
+                   status, (int)strlen((char *)out), out, pass ? "PASS" : "FAIL");
+            if (!pass) {
+                fails++;
+            }
+        }
+        free(zpub);
+    }
 
     if (fails != 0) {
         printf("FAIL (%d)\n", fails);

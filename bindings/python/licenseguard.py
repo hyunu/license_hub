@@ -130,6 +130,36 @@ class LicenseGuard:
         kfn.restype = ctypes.c_int32
         self._kfn = kfn
 
+        dfn = self._lib.lh_decrypt_license
+        dfn.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_uint32),
+        ]
+        dfn.restype = ctypes.c_int32
+        self._dfn = dfn
+
+        cfn = self._lib.lh_verify_challenge
+        cfn.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+        ]
+        cfn.restype = ctypes.c_int32
+        self._cfn = cfn
+
+        afn = self._lib.lh_application_id
+        afn.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_size_t]
+        afn.restype = ctypes.c_int32
+        self._afn = afn
+
     def verify(self, certificate: bytes, public_key: bytes, context: bytes = b"{}") -> VerifyResult:
         """인증서 JSON 바이트, Ed25519 공개키 32바이트, 검증 Context JSON 바이트."""
         cert_buf = ctypes.create_string_buffer(certificate)
@@ -164,3 +194,48 @@ class LicenseGuard:
         if status != 0 or cap.value != 32:
             raise RuntimeError(f"trusted_public_key failed: status={status}")
         return out.raw[:32]
+
+    def decrypt_license(
+        self, envelope: bytes, z_private_key: bytes, lh_public_key: bytes
+    ) -> VerifyResult:
+        """암호화된 License 엔벨로프를 Z_Pri로 복호화·검증한다(LH-REQ-008).
+
+        status=0 성공(복호화·서명·App 바인딩 모두 통과), -1 인자 오류,
+        -2 파싱/복호화 오류, -3 엔벨로프 서명/App 불일치.
+        """
+        env_buf = ctypes.create_string_buffer(envelope)
+        zkey_buf = ctypes.create_string_buffer(z_private_key)
+        lhkey_buf = ctypes.create_string_buffer(lh_public_key)
+        code = ctypes.c_uint32(0xFFFFFFFF)
+        status = self._dfn(
+            env_buf, len(envelope),
+            zkey_buf, len(z_private_key),
+            lhkey_buf, len(lh_public_key),
+            ctypes.byref(code),
+        )
+        return VerifyResult(status, code.value)
+
+    def verify_challenge(
+        self, z_public_key: bytes, challenge_json: bytes, signature_b64: bytes
+    ) -> int:
+        """Challenge-Response 서명을 검증한다(LH-REQ-012).
+
+        0 성공, -1 인자 오류, -2 파싱 오류, 1 서명 불일치.
+        """
+        key_buf = ctypes.create_string_buffer(z_public_key)
+        chal_buf = ctypes.create_string_buffer(challenge_json)
+        sig_buf = ctypes.create_string_buffer(signature_b64)
+        return self._cfn(
+            key_buf, len(z_public_key),
+            chal_buf, len(challenge_json),
+            sig_buf, len(signature_b64),
+        )
+
+    def application_id(self, z_public_key: bytes) -> str:
+        """Application 공개키에서 Application ID(SHA-256)를 파생한다(LH-REQ-013)."""
+        key_buf = ctypes.create_string_buffer(z_public_key)
+        out = ctypes.create_string_buffer(64)
+        status = self._afn(key_buf, len(z_public_key), out, 64)
+        if status != 0:
+            raise RuntimeError(f"application_id failed: status={status}")
+        return out.value.decode("ascii")
