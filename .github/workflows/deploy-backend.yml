@@ -4,7 +4,7 @@ name: Deploy Backend to Oracle
 # - 수동: Actions 탭 → Deploy Backend to Oracle → Run workflow
 # - 자동: main 브랜치에서 core/ 또는 web/backend/ 변경 push 시
 #
-# 인스턴스는 Oracle Linux 9.8 aarch64(ARM). cross(Docker)로 aarch64 musl
+# 인스턴스는 Ubuntu 26.04 x86_64(amd64). cross(Docker)로 x86_64 musl
 # 정적 바이너리를 빌드해 glibc·배포판과 무관하게 실행한다.
 
 on:
@@ -30,7 +30,7 @@ jobs:
           sudo mv /tmp/cross /usr/local/bin/
           cross --version
 
-      - name: Build backend (cross, aarch64 musl)
+      - name: Build backend (cross, x86_64 musl)
         run: |
           # path 의존성(../../core)이 cross 컨테이너에 마운트되도록 루트 워크스페이스 임시 생성
           cat > Cargo.toml <<'EOF'
@@ -38,8 +38,8 @@ jobs:
           resolver = "2"
           members = ["web/backend"]
           EOF
-          cross build --workspace --release --target aarch64-unknown-linux-musl
-          BIN=$(find . -path "*aarch64-unknown-linux-musl/release/licensehub-web-backend" -type f | head -1)
+          cross build --workspace --release --target x86_64-unknown-linux-musl
+          BIN=$(find . -path "*x86_64-unknown-linux-musl/release/licensehub-web-backend" -type f | head -1)
           echo "binary: ${BIN}"
           cp "${BIN}" ./licensehub-web-backend.musl
 
