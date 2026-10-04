@@ -1,0 +1,34 @@
+name: Debug SSH
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect key
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          printf '%s\n' "$KEY" > /tmp/ci_key
+          chmod 600 /tmp/ci_key
+          echo "=== first line ==="
+          head -1 /tmp/ci_key
+          echo "=== byte size ==="
+          wc -c /tmp/ci_key
+          echo "=== lines ==="
+          wc -l /tmp/ci_key
+          echo "=== ssh-keygen -y (parse test) ==="
+          ssh-keygen -y -P "" -f /tmp/ci_key >/dev/null 2>/tmp/parse_err && echo "PARSE OK" || { echo "PARSE FAIL"; cat /tmp/parse_err; }
+      - name: Test SSH auth
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          printf '%s\n' "$KEY" > /tmp/ci_key
+          chmod 600 /tmp/ci_key
+          echo "=== ssh verbose ==="
+          ssh -vvv -p "${PORT}" -i /tmp/ci_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "${USER}@${HOST}" 'echo CONNECT_OK' 2>&1 | grep -iE "Offering|Authentications|method|accepted|denied|Permission|CONNECT_OK|loaded|identity|no supported" | head -20
