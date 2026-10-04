@@ -50,6 +50,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: 30m
           envs: LICENSEHUB_SIGNING_KEY,LICENSEHUB_VERIFY_URL,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD,PROXY_DOMAIN,GITHUB_REPO,GITHUB_APP_ID,GITHUB_INSTALLATION_ID
           script: |
             set -e

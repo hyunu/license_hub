@@ -27,12 +27,13 @@ echo "==> caddy 설치"
 if ! command -v caddy >/dev/null 2>&1; then
     if [ "$PKG" = dnf ]; then
         # Oracle Linux / RHEL: COPR repo 시도
-        dnf install -y 'dnf-command(copr)' >/dev/null 2>&1 || true
-        dnf copr enable -y '@caddy/caddy' >/dev/null 2>&1 || true
-        dnf install -y caddy >/dev/null 2>&1 || true
+        # 소형 인스턴스에서 dnf가 OOM으로 죽거나 멈추지 않도록 제한 시간을 건다.
+        timeout 300 dnf install -y 'dnf-command(copr)' >/dev/null 2>&1 || true
+        timeout 300 dnf copr enable -y '@caddy/caddy' >/dev/null 2>&1 || true
+        timeout 300 dnf install -y caddy >/dev/null 2>&1 || true
     else
         apt-get update -y >/dev/null
-        apt-get install -y caddy >/dev/null 2>&1 || true
+        timeout 300 apt-get install -y caddy >/dev/null 2>&1 || true
     fi
 fi
 
