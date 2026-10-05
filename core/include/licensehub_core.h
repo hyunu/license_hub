@@ -99,6 +99,21 @@ int32_t lh_fetch_server_status(
     uint32_t *result_code
 );
 
+/* L2/L3 production path with online server verification. Decrypts the
+ * envelope, queries the certificate's server.verification_url with the fixed
+ * API key, then verifies. Fail-Closed: if the server is unreachable or does
+ * not answer "approved", the license is deactivated. Same return convention
+ * as lh_decrypt_verify_trusted_license. */
+int32_t lh_decrypt_verify_trusted_license_online(
+    const uint8_t *envelope,
+    size_t envelope_len,
+    const uint8_t *z_private_key,
+    size_t z_private_key_len,
+    const uint8_t *context,
+    size_t context_len,
+    uint32_t *result_code
+);
+
 #ifdef __cplusplus
 }
 #endif

@@ -139,6 +139,16 @@ const CURRENT_SCHEMA_VERSION: u32 = 1;
 // 현재는 Ed25519만 지원하며, 알고리즘 추가 시 명시적인 구현과 테스트가 필요하다.
 const ALGORITHM: &str = "Ed25519";
 
+/// L2 서버 검증 요청에 사용하는 고정 API 키.
+///
+/// 검증 서버와 가드(온라인 조회)가 공유하는 단일 값이다. 가드에 내장되므로
+/// 추출될 수 있고, 값을 바꾸면 양쪽을 함께 재배포해야 한다. 더 강한 보증이
+/// 필요하면 요청 서명이나 별도 토큰으로 대체한다.
+pub const VERIFY_API_KEY: &str = "lh-verify-77c1e0b2a94f4d3e";
+
+/// L2 검증 요청에서 API 키를 담는 헤더 이름.
+pub const VERIFY_API_KEY_HEADER: &str = "x-licensehub-key";
+
 // FFI 경계에서 받아들이는 인증서·검증 Context의 최대 크기. 발급 정상 인증서
 // (Metadata와 하위 인증서 포함)는 이 크기를 넘지 않는다. 제한을 두지 않으면
 // 공격자가 거대한 JSON을 전달해 호출 프로세스의 메모리를 고갈시킬 수 있다.

@@ -58,8 +58,16 @@ L2/L3 인증서는 런타임에 서버 상태를 확인해야 한다. 서버 주
 
 ```text
 POST {verification_url}   {"license_id":"<LICENSE-ID>"}
+헤더: x-licensehub-key: <고정 API 키>
 응답 200: {"status":"approved"} 또는 {"status":"rejected"}
 ```
+
+요청에는 `core`에 정의된 고정 API 키가 `x-licensehub-key` 헤더로 들어간다.
+서버가 키를 확인하지 못하면 401을 돌려주고, 가드는 이를 실패로 처리해
+비활성화한다.
+
+L2는 **오프라인에서 무조건 비활성**이다. 서버에 도달하지 못하거나 승인
+응답을 받지 못하면 검증이 실패한다(Fail-Closed).
 
 C에서는 `lh_fetch_server_status`가 이 조회를 수행한다.
 

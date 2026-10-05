@@ -107,7 +107,7 @@ SW Client는 GitHub에 직접 접속하지 않고 **LicenseHub API(공개 엔드
 | `GET /api/claim/{license_id}` | 자신의 인증서 JSON 다운로드 | 없음 |
 | `GET /api/client/blacklist` | 폐기 목록 (GitHub blacklist.json 형식) | 없음 |
 | `GET /api/public-key` | 검증용 공개키 | 없음 |
-| `POST /api/verify` | L2 서버 검증 (approved/rejected) | 없음 |
+| `POST /api/verify` | L2 서버 검증 (approved/rejected) | `x-licensehub-key` |
 
 Client 흐름:
 
@@ -137,6 +137,6 @@ GitHub 동기화 탭은 같은 데이터를 GitHub 저장소에 배포하는 채
 | PATCH/DELETE | `/api/users/{id}` | 사용자 수정/삭제 (admin) |
 | GET/POST/DELETE | `/api/blacklist[/{id}]` | Blacklist 관리 (삭제는 admin) |
 | GET | `/api/audit` | 감사 로그 |
-| POST | `/api/verify` | L2 서버 검증 (approved/rejected) |
+| POST | `/api/verify` | L2 서버 검증 (approved/rejected), `x-licensehub-key` 필요 |
 | POST | `/api/sync/*` | GitHub Repository 동기화 |
 | GET | `/api/public-key` | 공개키 (hex/PEM) |

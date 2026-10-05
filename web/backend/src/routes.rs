@@ -1188,8 +1188,17 @@ pub async fn client_blacklist(State(state): State<Arc<AppState>>) -> Result<Json
 
 pub async fn verify(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(body): Json<VerifyRequest>,
-) -> Json<Value> {
+) -> Result<Json<Value>, ApiError> {
+    // 가드가 보낸 고정 API 키를 확인한다. 키가 없거나 다르면 조회를 거부한다.
+    let provided = headers
+        .get(licensehub_core::VERIFY_API_KEY_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if provided != licensehub_core::VERIFY_API_KEY {
+        return Err(unauthorized());
+    }
     let db = state.db.lock().unwrap();
     let row: Option<(String, String)> = db
         .query_row(
@@ -1199,9 +1208,9 @@ pub async fn verify(
         )
         .ok();
     let Some((status, expires_at)) = row else {
-        return Json(
+        return Ok(Json(
             json!({ "license_id": body.license_id, "status": "rejected", "reason": "unknown_license" }),
-        );
+        ));
     };
     // Blacklist는 license 상태와 별개로 직접 확인한다. 둘 중 하나라도
     // 걸리면 거부한다.
@@ -1213,21 +1222,23 @@ pub async fn verify(
         )
         .unwrap_or(false);
     if blacklisted {
-        return Json(
+        return Ok(Json(
             json!({ "license_id": body.license_id, "status": "rejected", "reason": "blacklisted" }),
-        );
+        ));
     }
     if status != "active" {
-        return Json(
+        return Ok(Json(
             json!({ "license_id": body.license_id, "status": "rejected", "reason": status }),
-        );
+        ));
     }
     if expires_at.as_str() <= now_rfc3339().as_str() {
-        return Json(
+        return Ok(Json(
             json!({ "license_id": body.license_id, "status": "rejected", "reason": "expired" }),
-        );
+        ));
     }
-    Json(json!({ "license_id": body.license_id, "status": "approved" }))
+    Ok(Json(
+        json!({ "license_id": body.license_id, "status": "approved" }),
+    ))
 }
 
 // ---------------- GitHub Sync ----------------
