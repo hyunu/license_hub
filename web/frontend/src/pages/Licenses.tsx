@@ -2,20 +2,37 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api, downloadApplicationPublicKey, downloadCertificate, downloadEncryptedLicense, downloadLicensePublicKey, saveApplicationPrivateKey, type License } from '../api'
 import { Toasts, useToasts } from '../toast'
 
+// datetime-local 입력값(로컬 시각)을 Core가 파싱하는 RFC 3339 UTC로 바꾼다.
+// 예: "2027-10-05T14:30" -> "2027-10-05T05:30:00Z"
+function toRfc3339(local: string): string {
+  if (!local) return local
+  const d = new Date(local)
+  if (Number.isNaN(d.getTime())) return local
+  return d.toISOString().replace(/\.\d{3}Z$/, 'Z')
+}
+
+// 오늘 기준 1년 뒤를 datetime-local 표시 형식으로 만든다.
+function defaultExpiresAt(): string {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() + 1)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 // 이미지의 P 필드 (Application ID, Target Language, Version, Level, Owner,
 // Expired Date, Meta Data) 를 그대로 입력 폼으로 옮긴다.
-const EMPTY_FORM = {
+const emptyForm = () => ({
   license_id: '',
   product: '',
   version: '1.0.0',
   level: '1',
   holder: '',
-  expires_at: '2027-01-01T00:00:00Z',
+  expires_at: defaultExpiresAt(),
   metadata: '',
   target_language: 'cpp',
   application_public_key: '',
   verification_url: '',
-}
+})
 
 // 이미지의 Target Language 에 대응하는 런타임. "any" 는 제한 없음.
 const LANGUAGES = [
@@ -30,7 +47,7 @@ const LANGUAGES = [
 export function Licenses() {
   const [licenses, setLicenses] = useState<License[]>([])
   const [filter, setFilter] = useState('')
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState(emptyForm)
   const [busy, setBusy] = useState(false)
   const { toasts, ok, bad } = useToasts()
   const [showForm, setShowForm] = useState(false)
@@ -59,7 +76,7 @@ export function Licenses() {
         version: form.version,
         level: Number(form.level),
         holder: form.holder,
-        expires_at: form.expires_at,
+        expires_at: toRfc3339(form.expires_at),
       }
       if (form.license_id.trim()) body.license_id = form.license_id.trim()
       if (form.metadata.trim()) body.metadata = form.metadata.trim()
@@ -84,7 +101,7 @@ export function Licenses() {
           ? `라이선스 ${created.license_id} 생성됨 — 개인키를 지금 내려받아 보관하세요`
           : `라이선스 ${created.license_id} 생성됨`,
       )
-      setForm(EMPTY_FORM)
+      setForm(emptyForm())
       setShowForm(false)
       load(filter)
     } catch (err) {
