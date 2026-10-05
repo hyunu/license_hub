@@ -2,21 +2,20 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api, downloadApplicationPublicKey, downloadCertificate, downloadEncryptedLicense, downloadLicensePublicKey, saveApplicationPrivateKey, type License } from '../api'
 import { Toasts, useToasts } from '../toast'
 
-// datetime-local 입력값(로컬 시각)을 Core가 파싱하는 RFC 3339 UTC로 바꾼다.
-// 예: "2027-10-05T14:30" -> "2027-10-05T05:30:00Z"
-function toRfc3339(local: string): string {
-  if (!local) return local
-  const d = new Date(local)
-  if (Number.isNaN(d.getTime())) return local
-  return d.toISOString().replace(/\.\d{3}Z$/, 'Z')
+// date 입력(YYYY-MM-DD)을 그날 마지막 자정 직전(23:59:59 UTC)으로 바꾼다.
+// 만료일 당일까지 유효하고 다음 날 0시부터 만료가 된다.
+// 예: "2027-10-05" -> "2027-10-05T23:59:59Z"
+function toEndOfDayRfc3339(date: string): string {
+  const match = /^(\d{4}-\d{2}-\d{2})$/.exec(date)
+  return match ? `${match[1]}T23:59:59Z` : date
 }
 
-// 오늘 기준 1년 뒤를 datetime-local 표시 형식으로 만든다.
+// 오늘 기준 1년 뒤를 date 입력 표시 형식(YYYY-MM-DD)으로 만든다.
 function defaultExpiresAt(): string {
   const d = new Date()
   d.setFullYear(d.getFullYear() + 1)
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 // 이미지의 P 필드 (Application ID, Target Language, Version, Level, Owner,
@@ -76,7 +75,7 @@ export function Licenses() {
         version: form.version,
         level: Number(form.level),
         holder: form.holder,
-        expires_at: toRfc3339(form.expires_at),
+        expires_at: toEndOfDayRfc3339(form.expires_at),
       }
       if (form.license_id.trim()) body.license_id = form.license_id.trim()
       if (form.metadata.trim()) body.metadata = form.metadata.trim()
@@ -252,7 +251,7 @@ export function Licenses() {
                   </select>
                 </label>
                 <label className="f">만료일
-                  <input type="datetime-local" value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
+                  <input type="date" value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
                 </label>
                 <label className="f wide">메타정보
                   <input value={form.metadata} onChange={(e) => set('metadata', e.target.value)} placeholder="예: 고객사명, 계약번호" />
