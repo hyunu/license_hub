@@ -19,9 +19,6 @@ SSH 접근만 있으면 GitHub Actions로 Oracle(Ubuntu) 인스턴스에 백엔�
 필요한 비밀 시크릿:
 
 - **LICENSEHUB_SIGNING_KEY** — 64자 hex 개인키
-- **LICENSEHUB_VERIFY_URL** — 공개 HTTPS 검증 URL
-  - 도메인이 없으면 sslip.io: `https://<공인IP>.sslip.io/api/verify`
-  - 예: `https://146.56.111.99.sslip.io/api/verify`
 - **LICENSEHUB_ADMIN_USER** / **LICENSEHUB_ADMIN_PASSWORD**
 - **PROXY_DOMAIN** — Caddy가 HTTPS를 받을 호스트명
   - 예: `146.56.111.99.sslip.io` (sslip.io) 또는 `licensehub.duckdns.org`

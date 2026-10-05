@@ -21,7 +21,6 @@ use crate::models::*;
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
     pub issuer: Arc<Issuer>,
-    pub verify_url: String,
     pub github: Option<GitHubClient>,
 }
 
@@ -297,7 +296,8 @@ pub async fn list_licenses(
 const LICENSE_SELECT: &str = "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, target_language, application_public_key, created_at, \
 (SELECT COUNT(*) FROM certificates WHERE certificates.license_id = licenses.license_id), \
 (SELECT application_id FROM certificates WHERE certificates.license_id = licenses.license_id ORDER BY id DESC LIMIT 1), \
-(SELECT encrypted_license FROM certificates WHERE certificates.license_id = licenses.license_id ORDER BY id DESC LIMIT 1) FROM licenses";
+(SELECT encrypted_license FROM certificates WHERE certificates.license_id = licenses.license_id ORDER BY id DESC LIMIT 1), \
+verification_url FROM licenses";
 
 fn map_license(row: &rusqlite::Row) -> rusqlite::Result<License> {
     // Application ID는 사용자가 입력하지 않고 Application 공개키에서 파생한
@@ -305,6 +305,7 @@ fn map_license(row: &rusqlite::Row) -> rusqlite::Result<License> {
     let application_id: Option<String> = row.get(14)?;
     let application_public_key: Option<String> = row.get(11)?;
     let encrypted_license: Option<String> = row.get(15)?;
+    let verification_url: Option<String> = row.get(16)?;
     let encrypted = match encrypted_license {
         Some(raw) if !raw.trim().is_empty() => {
             let parsed: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
@@ -340,6 +341,7 @@ fn map_license(row: &rusqlite::Row) -> rusqlite::Result<License> {
         target_language: row.get(10)?,
         application_public_key,
         application_id,
+        verification_url,
         created_at: row.get(12)?,
         certificates: row.get(13)?,
         encrypted_license: encrypted,
@@ -361,6 +363,28 @@ pub async fn create_license(
     let status = body.status.clone().unwrap_or_else(|| "active".into());
     if body.level == 3 && body.device_id.as_deref().unwrap_or("").is_empty() {
         return Err(bad_request("level 3 requires device_id"));
+    }
+
+    // L2/L3는 런타임에 라이선스 상태를 확인할 검증 서버 주소가 인증서에
+    // 서명되어야 한다. 그 서버는 LicenseHub가 아니라 발급 시 지정한
+    // 라이선스별 서버다. L1은 서버 검증이 없으므로 비워야 한다.
+    let verification_url = body
+        .verification_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
+    if body.level >= 2 {
+        let url = verification_url
+            .as_deref()
+            .ok_or_else(|| bad_request("level 2 and 3 require verification_url"))?;
+        if !(url.starts_with("https://") || url.starts_with("http://")) {
+            return Err(bad_request(
+                "verification_url must start with http:// or https://",
+            ));
+        }
+    } else if verification_url.is_some() {
+        return Err(bad_request("level 1 must not set verification_url"));
     }
 
     // Application 공개키는 사용자가 직접 넣거나, 비우면 서버가 생성한다.
@@ -408,8 +432,8 @@ pub async fn create_license(
                 // 개인키는 이 응답으로 한 번만 내려주고 DB에는 남기지 않는다. 서버에
                 // 계속 보관하면 데이터베이스 유출 시 그 앱과 같은 권한이 되므로,
                 // 생성 시점에 받아 배포 대상 Application 에 심는 방식이 안전하다.
-                "INSERT INTO licenses (license_id, product, version, level, holder, device_id, expires_at, status, metadata, target_language, application_public_key, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                params![license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, body.metadata, body.target_language, application_public_key, now_rfc3339()],
+                "INSERT INTO licenses (license_id, product, version, level, holder, device_id, expires_at, status, metadata, target_language, application_public_key, verification_url, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, body.metadata, body.target_language, application_public_key, verification_url, now_rfc3339()],
             );
             if let Err(e) = res {
                 if e.to_string().contains("UNIQUE") && auto {
@@ -654,7 +678,15 @@ pub async fn issue_certificate(
         req = req.metadata("user_metadata", Value::String(meta.to_string()));
     }
     if lic.level >= 2 {
-        req = req.verification_url(&state.verify_url);
+        // 발급 시 지정한 라이선스별 검증 서버 주소를 인증서에 서명한다.
+        // LicenseHub 자신을 가리키지 않도록 저장된 값을 그대로 쓴다.
+        let url = lic
+            .verification_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| bad_request("level 2 and 3 require verification_url on the license"))?;
+        req = req.verification_url(url);
     }
     if lic.level == 3 {
         let device = lic.device_id.as_deref().unwrap_or("");

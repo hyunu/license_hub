@@ -59,7 +59,6 @@ SSH 접근이 있으면 GitHub Actions로 자동 배포·환경 구축이 가능
 | `LICENSEHUB_DB` | `data/licensehub.db` | SQLite 경로 |
 | `FRONTEND_DIST` | `../frontend/dist` | 정적 프론트 경로 |
 | `LICENSEHUB_SIGNING_KEY` | (없음) | 64자 hex 개인키. 운영 필수 |
-| `LICENSEHUB_VERIFY_URL` | `http://127.0.0.1:8080/api/verify` | L2/L3 서버 검증 URL |
 | `LICENSEHUB_ADMIN_USER/PASSWORD` | `admin` / `admin123` | 초기 관리자 |
 
 ## GitHub 연동

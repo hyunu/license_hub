@@ -28,6 +28,7 @@ export interface License {
   target_language: string | null
   application_public_key: string | null
   application_id: string | null
+  verification_url: string | null
   encrypted_license: EncryptedLicenseInfo | null
 }
 

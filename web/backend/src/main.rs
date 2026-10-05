@@ -54,7 +54,6 @@ fn main() {
     let state = Arc::new(AppState {
         db: Arc::new(Mutex::new(conn)),
         issuer: Arc::new(issuer),
-        verify_url: config.verify_url.clone(),
         github,
     });
 

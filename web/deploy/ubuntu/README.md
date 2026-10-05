@@ -71,10 +71,6 @@ FRONTEND_DIST=/opt/licensehub/frontend
 # 반드시 64자 hex 개인키를 설정 (재시작 후에도 인증서 검증 유지)
 LICENSEHUB_SIGNING_KEY=<64-char-hex>
 
-# L2/L3 인증서에 박히는 서버 검증 URL: 방문자(클라이언트)가 접근하므로
-# 반드시 공개 HTTPS 주소여야 한다. Tailscale IP로 설정하면 안 된다.
-LICENSEHUB_VERIFY_URL=$PUBLIC_URL/api/verify
-
 LICENSEHUB_ADMIN_USER=admin
 LICENSEHUB_ADMIN_PASSWORD=<강한 비밀번호>
 
@@ -181,8 +177,8 @@ sudo systemctl enable --now caddy
 공통:
 
 - **VCN 보안목록**: 인바운드 `TCP 443`과 `TCP 80`(ACME 검증용) 오픈.
-- 최종 URL을 `PUBLIC_URL`(`.env`의 `LICENSEHUB_VERIFY_URL`)과 프론트
-  `API_BASE_URL`에 사용한다.
+- 최종 URL을 프론트 `API_BASE_URL`에 사용한다. L2/L3 검증 서버 주소는
+  라이선스 발급 시 입력하므로 여기서 정하지 않는다.
 
 ### 6.2 Tailscale Funnel
 
@@ -195,10 +191,10 @@ tailscale funnel status
 ```
 
 - Funnel은 Tailscale이 443에서 TLS를 종료하고 터널 안의 8080으로 전달한다.
-- 이 URL을 `PUBLIC_URL`(`.env`의 `LICENSEHUB_VERIFY_URL`, 프론트
-  `API_BASE_URL`)에 사용한다.
+- 이 URL을 프론트 `API_BASE_URL`에 사용한다. L2/L3 검증 서버 주소는
+  라이선스 발급 시 입력하므로 여기서 정하지 않는다.
 - Funnel은 백엔드를 공개 인터넷에 노출하므로 API 인증(Bearer 토큰)이
-  보호의 핵심이다. `/api/verify` 는 L2/L3 검증용 공개 엔드포인트다.
+  보호의 핵심이다.
 - 계획에 따라 Funnel 제공 여부가 다를 수 있다(무료/유료 확인).
 
 ### 대안: 도메인 + 리버스프록시 (Caddy)

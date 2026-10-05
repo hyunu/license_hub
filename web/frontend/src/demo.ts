@@ -36,6 +36,7 @@ export const demoLicenses: License[] = [
     target_language: 'cpp',
     application_public_key: DEMO_APP_PUBLIC_KEY_PEM,
     application_id: DEMO_APP_ID,
+    verification_url: null,
     encrypted_license: { schema_version: 1, key_id: 'license-signing-key', encrypted_for: DEMO_APP_ID },
   },
   {
@@ -53,6 +54,7 @@ export const demoLicenses: License[] = [
     target_language: 'csharp',
     application_public_key: DEMO_APP_PUBLIC_KEY_PEM,
     application_id: DEMO_APP_ID,
+    verification_url: 'https://license.betacorp.example/v1/verify',
     encrypted_license: { schema_version: 1, key_id: 'license-signing-key', encrypted_for: DEMO_APP_ID },
   },
   {
@@ -70,6 +72,7 @@ export const demoLicenses: License[] = [
     target_language: null,
     application_public_key: null,
     application_id: null,
+    verification_url: 'https://license.gamma.example/v1/verify',
     encrypted_license: null,
   },
 ]
@@ -124,6 +127,7 @@ export function demoCreateLicense(body: Record<string, unknown>): License {
     target_language: String(body.target_language ?? '').trim() || null,
     application_public_key: ak2 || null,
     application_id: DEMO_APP_ID,
+    verification_url: body.verification_url ? String(body.verification_url) : null,
     encrypted_license: null,
   }
   demoLicenses.unshift(lic)

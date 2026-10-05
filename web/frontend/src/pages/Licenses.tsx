@@ -15,6 +15,7 @@ const EMPTY_FORM = {
   metadata: '',
   target_language: 'cpp',
   application_public_key: '',
+  verification_url: '',
 }
 
 // 이미지의 Target Language 에 대응하는 런타임. "any" 는 제한 없음.
@@ -67,6 +68,11 @@ export function Licenses() {
       if (form.target_language.trim()) body.target_language = form.target_language
       // 비우면 서버가 Application 키쌍을 생성한다. 채우면 앱이 가진 키로 암호화한다.
       if (form.application_public_key.trim()) body.application_public_key = form.application_public_key.trim()
+      // L2/L3에서 런타임에 라이선스 상태를 확인할 검증 서버 주소.
+      // LicenseHub가 아니라 발급 시 지정한 라이선스별 서버 주소다.
+      if (Number(form.level) >= 2 && form.verification_url.trim()) {
+        body.verification_url = form.verification_url.trim()
+      }
       const created = await api.createLicense(body)
       // 공개키를 비워서 서버가 키쌍을 만들었다면 개인키가 이 응답으로 온다.
       // 서버는 저장하지 않으므로 이 시점에 반드시 받아야 한다.
@@ -213,6 +219,17 @@ export function Licenses() {
                     <option value="3">3 — Device-Bound</option>
                   </select>
                 </label>
+                {Number(form.level) >= 2 && (
+                  <label className="f wide"><span className="lbl">검증 서버 주소 <span className="req">*</span></span>
+                    <input
+                      type="url"
+                      value={form.verification_url}
+                      onChange={(e) => set('verification_url', e.target.value)}
+                      placeholder="https://license.customer.com/v1/verify"
+                      required
+                    />
+                  </label>
+                )}
                 <label className="f">언어
                   <select value={form.target_language} onChange={(e) => set('target_language', e.target.value)}>
                     {LANGUAGES.map((l) => (
