@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, downloadCertificate, downloadEncryptedLicense, downloadLicensePublicKey, getCertificate, getEncryptedLicense, type License } from '../api'
+import { api, downloadApplicationPublicKey, downloadCertificate, downloadEncryptedLicense, downloadLicensePublicKey, getCertificate, getEncryptedLicense, saveApplicationPrivateKey, type License } from '../api'
 import { Toasts, useToasts } from '../toast'
 
 // 이미지의 P 필드 (Application ID, Target Language, Version, Level, Owner,
@@ -34,6 +34,9 @@ export function Licenses() {
   const [busy, setBusy] = useState(false)
   const { toasts, ok, bad } = useToasts()
   const [showForm, setShowForm] = useState(false)
+  // 서버가 자동 생성한 개인키. 생성 응답에서 한 번만 나오므로 여기서 받아
+  // 파일로 저장하게 한 뒤 없앤다.
+  const [keyReveal, setKeyReveal] = useState<{ license: string; privatePem: string } | null>(null)
   const [certView, setCertView] = useState<{
     license: string
     cert: Record<string, unknown>
@@ -69,10 +72,21 @@ export function Licenses() {
       if (form.device_id) body.device_id = form.device_id
       if (form.metadata.trim()) body.metadata = form.metadata.trim()
       if (form.target_language.trim()) body.target_language = form.target_language
-      // AK2(Z_Pub)를 주면 발급 시 P가 이 키로 암호화되어 LIC로 저장된다.
+      // 비우면 서버가 Application 키쌍을 생성한다. 채우면 앱이 가진 키로 암호화한다.
       if (form.application_public_key.trim()) body.application_public_key = form.application_public_key.trim()
       const created = await api.createLicense(body)
-      ok(`라이선스 ${created.license_id} 생성됨`)
+      // 공개키를 비워서 서버가 키쌍을 만들었다면 개인키가 이 응답으로 온다.
+      // 서버는 저장하지 않으므로 이 시점에 반드시 받아야 한다.
+      const generatedPrivateKey =
+        typeof created.application_private_key === 'string' ? created.application_private_key : null
+      if (generatedPrivateKey) {
+        setKeyReveal({ license: created.license_id, privatePem: generatedPrivateKey })
+      }
+      ok(
+        generatedPrivateKey
+          ? `라이선스 ${created.license_id} 생성됨 — 개인키를 지금 내려받아 보관하세요`
+          : `라이선스 ${created.license_id} 생성됨`,
+      )
       setForm(EMPTY_FORM)
       setShowForm(false)
       load(filter)
@@ -93,6 +107,11 @@ export function Licenses() {
         appId: res.application_id,
         lang: res.target_language,
       })
+      // 키 없이 등록된 라이선스를 발급하면서 새 키를 만든 경우에도 개인키가
+      // 이 응답으로 한 번만 온다.
+      if (typeof res.application_private_key === 'string') {
+        setKeyReveal({ license: lic.license_id, privatePem: res.application_private_key })
+      }
       if (res.encrypted_license) {
         ok(`발급됨 — ${lic.license_id}.lic.json`)
       } else {
@@ -104,7 +123,16 @@ export function Licenses() {
     }
   }
 
-  // 이미지의 최종 산출물인 암호화된 LIC 를 내려받는다.
+  const downloadAppPublicKey = async (lic: License) => {
+    try {
+      await downloadApplicationPublicKey(lic.id, lic.license_id)
+      ok(`공개키 다운로드됨 — ${lic.license_id}-application-public-key.pem`)
+    } catch (err) {
+      bad(err instanceof Error ? err.message : '공개키 다운로드 실패')
+    }
+  }
+
+// 최종 산출물인 암호화된 라이선스 파일을 내려받는다.
   const downloadLic = async (lic: License) => {
     if (!lic.encrypted_license) {
       bad(
@@ -252,10 +280,10 @@ export function Licenses() {
                   <textarea
                     value={form.application_public_key}
                     onChange={(e) => set('application_public_key', e.target.value)}
-                    placeholder={'-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----'}
+                    placeholder={'비우면 서버가 생성합니다\n-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----'}
                   />
                 </label>
-                <p className="hint">선택 입력. 입력하면 라이선스를 이 공개키로 암호화해 내려줍니다. 비우면 암호화하지 않습니다.</p>
+                <p className="hint">선택 입력. 비우면 키쌍을 만들어 개인키를 즉시 내려줍니다. 채우면 앱이 가진 키로 암호화합니다.</p>
               </div>
             </div>
 
@@ -271,12 +299,12 @@ export function Licenses() {
             <tr>
               <th>License</th><th>제품 / 버전</th><th>등급</th><th>언어</th>
               <th>Application ID</th><th>소유자</th>
-              <th>만료</th><th>상태</th><th>LIC</th><th>작업</th>
+              <th>만료</th><th>상태</th><th>LIC</th><th>Application 키</th><th>작업</th>
             </tr>
           </thead>
           <tbody>
             {licenses.length === 0 && (
-              <tr><td colSpan={10} className="muted small">등록된 라이선스가 없습니다 — '새 라이선스'로 추가하세요</td></tr>
+              <tr><td colSpan={11} className="muted small">등록된 라이선스가 없습니다 — '새 라이선스'로 추가하세요</td></tr>
             )}
             {licenses.map((l) => (
               <tr key={l.id}>
@@ -302,16 +330,21 @@ export function Licenses() {
                   )}
                 </td>
                 <td className="actions">
+                  <button className="btn small" onClick={() => downloadAppPublicKey(l)}
+                    title="라이선스를 암호화할 때 쓰이는 공개키(.pem)">공개키</button>
+                </td>
+                <td className="actions">
                   <button className="btn small primary" onClick={() => issue(l)}>발급</button>
                   <button className="btn small" onClick={() => viewLic(l)} disabled={!l.encrypted_license}
-                    title={l.encrypted_license ? '암호화된 LIC 확인' : 'AK2 미등록 또는 미발급'}>LIC</button>
+                    title={l.encrypted_license ? '암호화된 라이선스 확인' : '아직 발급되지 않았습니다'}>LIC</button>
                   <button className="btn small" onClick={() => downloadLic(l)} disabled={!l.encrypted_license}
-                    title={l.encrypted_license ? `${l.license_id}.lic.json 내려받기` : 'AK2 미등록 또는 미발급'}>LIC↓</button>
+                    title={l.encrypted_license ? `${l.license_id}.lic.json 내려받기` : '아직 발급되지 않았습니다'}>LIC↓</button>
                   <button className="btn small" onClick={() => viewCert(l)} disabled={l.certificates === 0}
                     title={l.certificates === 0 ? '인증서를 먼저 발급하세요' : undefined}>보기</button>
                   <button className="btn small" onClick={() => download(l)} disabled={l.certificates === 0}
                     title={l.certificates === 0 ? '인증서를 먼저 발급하세요' : undefined}>다운로드</button>
-                  <button className="btn small" onClick={() => downloadKey(l)}>공개키</button>
+                  <button className="btn small" onClick={() => downloadKey(l)}
+                    title="라이선스 검증에 쓰이는 서명 공개키(.pem)">서명키</button>
                   <button className={`btn small ${l.status === 'active' ? 'danger' : ''}`} onClick={() => toggleStatus(l)}>
                     {l.status === 'active' ? '폐기' : '복구'}
                   </button>
@@ -320,6 +353,30 @@ export function Licenses() {
             ))}
           </tbody>
         </table>
+
+        {keyReveal && (
+          <section className="sec warn" style={{ marginTop: 22 }}>
+            <div className="sec-head">
+              <h3 className="sec-title">Application 개인키 — {keyReveal.license}</h3>
+              <div className="actions">
+                <button
+                  className="btn small primary"
+                  onClick={() => {
+                    saveApplicationPrivateKey(keyReveal.license, keyReveal.privatePem)
+                    ok(`${keyReveal.license}-application-private-key.pem 내려받음`)
+                  }}
+                >내려받기</button>
+                <button className="btn small" onClick={() => setKeyReveal(null)}>닫기</button>
+              </div>
+            </div>
+            <p className="small">
+              이 창을 닫으면 다시 내려받을 수 없습니다. 서버는 이 키를 저장하지 않습니다.
+              이 키를 받은 앱만 라이선스를 복호화할 수 있으므로 배포 대상 Application 에만 넣고,
+              키보드에도 붙여넣지 말고 파일로 보관하세요.
+            </p>
+            <pre className="jsonbox">{keyReveal.privatePem}</pre>
+          </section>
+        )}
 
         {certView && (
           <section className="sec" style={{ marginTop: 22 }}>

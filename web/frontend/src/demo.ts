@@ -9,15 +9,15 @@ function now(): string {
   return new Date().toISOString()
 }
 
-// 데모용 AK2(Z_Pub) 예시 값. 실제 운영에서는 Application 이 Z_Pri 와 함께
+// 데모용 Application 공개키 예시 값. 실제 운영에서는 Application 이 개인키와 함께
 // 제공해야 하며, 서버는 이 공개키로만 P를 암호화한다.
-const DEMO_AK2_PEM = `-----BEGIN PUBLIC KEY-----
+const DEMO_APP_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEA0M2VbFmvMEfM0mHIvbjJDlXhcHnRIcHwtLbOwtCQUzMxLcTt
 oJ+GZ2Q1Yh0Yl0l8nS0a9Xk0CkL8Q0m1oE1nJ2CkL3wR8kY5pQ0m0Xk0CkL8Q0m1o
 E1nJ2CkL3wR8kY5pQ0m0Xk0CkL8Q0m1oE1nJ2CkL3wR8kY5pQ0m0Xk0CkL8Q0m1o
 -----END PUBLIC KEY-----`
 
-// RS-7: Application ID는 수동 입력이 아니라 AK2 에서 도출한다.
+// Application ID는 수동 입력이 아니라 Application 공개키에서 도출한다.
 const DEMO_APP_ID = '1-4bKc9xQmL2pT7vRzY0dNf8W3sH6gJ1aEuX5iOyC'
 
 export const demoLicenses: License[] = [
@@ -34,7 +34,7 @@ export const demoLicenses: License[] = [
     created_at: now(),
     certificates: 1,
     target_language: 'cpp',
-    application_public_key: DEMO_AK2_PEM,
+    application_public_key: DEMO_APP_PUBLIC_KEY_PEM,
     application_id: DEMO_APP_ID,
     encrypted_license: { schema_version: 1, key_id: 'license-signing-key', encrypted_for: DEMO_APP_ID },
   },
@@ -51,7 +51,7 @@ export const demoLicenses: License[] = [
     created_at: now(),
     certificates: 2,
     target_language: 'csharp',
-    application_public_key: DEMO_AK2_PEM,
+    application_public_key: DEMO_APP_PUBLIC_KEY_PEM,
     application_id: DEMO_APP_ID,
     encrypted_license: { schema_version: 1, key_id: 'license-signing-key', encrypted_for: DEMO_APP_ID },
   },
@@ -123,7 +123,7 @@ export function demoCreateLicense(body: Record<string, unknown>): License {
     certificates: 0,
     target_language: String(body.target_language ?? '').trim() || null,
     application_public_key: ak2 || null,
-    application_id: ak2 ? DEMO_APP_ID : null,
+    application_id: DEMO_APP_ID,
     encrypted_license: null,
   }
   demoLicenses.unshift(lic)
@@ -167,7 +167,7 @@ export function demoIssueCertificate(id: number): {
   }
   if (lic) lic.certificates += 1
 
-  // AK2가 있을 때만 P를 LH_Pri로 서명한 뒤 AK2로 암호화한 LIC를 만든다.
+  // 앱 공개키가 있으면 그 키로 암호화한 라이선스 파일을 만든다.
   let encrypted: Record<string, unknown> | null = null
   if (lic?.application_public_key) {
     encrypted = demoEncryptedLicense(certificateId)

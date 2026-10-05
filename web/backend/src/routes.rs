@@ -4,10 +4,10 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use ed25519_dalek::VerifyingKey;
-use licensehub_core::envelope::{EncryptedLicense, application_id, encrypt_license};
+use ed25519_dalek::{SigningKey, VerifyingKey};
+use licensehub_core::envelope::{application_id, encrypt_license};
 use licensehub_core::{CertificateRequest, Issuer};
-use pkcs8::{DecodePublicKey, EncodePublicKey, LineEnding};
+use pkcs8::{DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -300,8 +300,8 @@ const LICENSE_SELECT: &str = "SELECT id, license_id, product, version, level, ho
 (SELECT encrypted_license FROM certificates WHERE certificates.license_id = licenses.license_id ORDER BY id DESC LIMIT 1) FROM licenses";
 
 fn map_license(row: &rusqlite::Row) -> rusqlite::Result<License> {
-    // RS-7: Application ID는 사용자가 입력하지 않고 AK2(Z_Pub)에서
-    // 파생한 값만 담는다. UI에도 이 값만 노출한다.
+    // Application ID는 사용자가 입력하지 않고 Application 공개키에서 파생한
+    // 값만 담는다. UI에도 이 값만 노출한다.
     let application_id: Option<String> = row.get(14)?;
     let application_public_key: Option<String> = row.get(11)?;
     let encrypted_license: Option<String> = row.get(15)?;
@@ -350,7 +350,7 @@ pub async fn create_license(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(body): Json<LicenseInput>,
-) -> Result<Json<License>, ApiError> {
+) -> Result<Json<Value>, ApiError> {
     let user = auth_user(&state, &headers)?;
     if body.product.is_empty() || body.version.is_empty() || body.holder.is_empty() {
         return Err(bad_request("product, version, holder are required"));
@@ -363,16 +363,30 @@ pub async fn create_license(
         return Err(bad_request("level 3 requires device_id"));
     }
 
-    // AK2(Z_Pub)를 제공했다면 즉시 파싱해 유효성을 확인한다. 잘못된 키로
-    // 발급 요청이 들어오면 여기서 거절해야 발급 단계에서 원문 LIC가 노출되지 않는다.
-    if let Some(pem) = body.application_public_key.as_deref()
-        && !pem.trim().is_empty()
-        && parse_application_public_key(pem).is_none()
-    {
-        return Err(bad_request(
-            "application_public_key must be an Ed25519 public key in PEM (SubjectPublicKeyInfo) form",
-        ));
-    }
+    // Application 공개키는 사용자가 직접 넣거나, 비우면 서버가 생성한다.
+    // 어느 쪽이든 라이선스를 암호화할 키는 반드시 존재해야 한다. 키가 없으면
+    // 평문 인증서가 발급되어 소유자·만료일·등급이 그대로 노출된다.
+    let provided = body
+        .application_public_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    let (application_public_key, generated_private_key) = match provided {
+        Some(pem) => {
+            if parse_application_public_key(pem).is_none() {
+                return Err(bad_request(
+                    "application_public_key must be an Ed25519 public key in PEM (SubjectPublicKeyInfo) form",
+                ));
+            }
+            // 사용자가 공개키를 제공했다면 개인키는 알 수 없다. 해당 앱이
+            // 이미 가지고 있는 키쌍이므로 여기서 새로 만들지 않는다.
+            (Some(pem.to_string()), None)
+        }
+        None => {
+            let pair = generate_application_keypair().map_err(|e| internal(&e.to_string()))?;
+            (Some(pair.public_pem), Some(pair.private_pem))
+        }
+    };
 
     // license_id 를 비워두면 시스템이 자동 생성한다 (충돌 시 재생성).
     let auto = body
@@ -391,8 +405,11 @@ pub async fn create_license(
         {
             let db = state.db.lock().unwrap();
             let res = db.execute(
+                // 개인키는 이 응답으로 한 번만 내려주고 DB에는 남기지 않는다. 서버에
+                // 계속 보관하면 데이터베이스 유출 시 그 앱과 같은 권한이 되므로,
+                // 생성 시점에 받아 배포 대상 Application 에 심는 방식이 안전하다.
                 "INSERT INTO licenses (license_id, product, version, level, holder, device_id, expires_at, status, metadata, target_language, application_public_key, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                params![license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, body.metadata, body.target_language, body.application_public_key, now_rfc3339()],
+                params![license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, body.metadata, body.target_language, application_public_key, now_rfc3339()],
             );
             if let Err(e) = res {
                 if e.to_string().contains("UNIQUE") && auto {
@@ -424,7 +441,85 @@ pub async fn create_license(
             map_license,
         )
         .map_err(|e| internal(&e.to_string()))?;
-    Ok(Json(lic))
+    drop(db);
+
+    // 자동 생성했다면 개인키를 이 응답에서만 돌려준다. 목록 API 와 DB 에는
+    // 절대 남지 않으므로, 이 시점에 받지 않으면 다시 받을 수 없다.
+    let mut response = serde_json::to_value(&lic).map_err(|e| internal(&e.to_string()))?;
+    if let (Some(object), Some(private_pem)) = (response.as_object_mut(), &generated_private_key) {
+        object.insert(
+            "application_private_key".into(),
+            Value::String(private_pem.clone()),
+        );
+        object.insert("application_key_generated".into(), Value::Bool(true));
+    }
+    Ok(Json(response))
+}
+
+/// Application 키쌍(Z_Pri/Z_Pub)을 새로 만든다.
+///
+/// 사용자가 공개키를 직접 넣지 않았을 때 사용한다. 라이선스를 이 키쌍으로만
+/// 암호화하므로, 한 앱용으로 발급된 라이선스는 다른 앱에서 복호화할 수 없다.
+struct ApplicationKeyPair {
+    public_pem: String,
+    private_pem: String,
+}
+
+fn generate_application_keypair() -> Result<ApplicationKeyPair, String> {
+    let mut seed = [0u8; 32];
+    getrandom::fill(&mut seed).map_err(|e| format!("random source unavailable: {e}"))?;
+    let signing = SigningKey::from_bytes(&seed);
+    seed.fill(0);
+    let public_pem = signing
+        .verifying_key()
+        .to_public_key_pem(LineEnding::LF)
+        .map_err(|e| e.to_string())?;
+    let private_pem = signing
+        .to_pkcs8_pem(LineEnding::LF)
+        .map_err(|e| e.to_string())?
+        .to_string();
+    Ok(ApplicationKeyPair {
+        public_pem,
+        private_pem,
+    })
+}
+
+/// Application 공개키(Z_Pub)를 내려받는다.
+///
+/// 라이선스를 암호화할 때 쓰이는 키이므로 Application 배포물에 포함된다.
+pub async fn download_application_public_key(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Response, ApiError> {
+    auth_user(&state, &headers)?;
+    let (license_id, public_pem): (String, String) = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT license_id, application_public_key FROM licenses
+             WHERE id = ?1 AND application_public_key IS NOT NULL",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| internal(&e.to_string()))?
+        .ok_or_else(|| not_found("no application public key registered"))?
+    };
+    let mut hdrs = HeaderMap::new();
+    hdrs.insert(
+        header::CONTENT_TYPE,
+        "application/x-pem-file".parse().unwrap(),
+    );
+    hdrs.insert(
+        header::CONTENT_DISPOSITION,
+        format!(
+            "attachment; filename=\"{}-application-public-key.pem\"",
+            license_id
+        )
+        .parse()
+        .unwrap(),
+    );
+    Ok((hdrs, public_pem).into_response())
 }
 
 /// P를 암호화할 Application 공개키(AK2 = Z_Pub)를 파싱한다.
@@ -507,19 +602,44 @@ pub async fn issue_certificate(
             .expires_at(&lic.expires_at)
             .issued_at(now_rfc3339());
 
-    // 이미지의 P 필드. Target Language와 Application ID는 서명 대상에
-    // 포함되어야 X가 실행 환경과 비교할 수 있다.
+    // Application 공개키는 라이선스를 암호화하는 기준 키다. 키 없이 등록된
+    // 기존 데이터도 여기서 거절하지 않고 새 키쌍을 만들어 이어서 쓸 수 있게
+    // 한다. 키가 없으면 평문 인증서로 내려갈 수 없고, 소유자·만료일·등급이
+    // 그대로 노출되기 때문이다. 개인키는 이 응답으로 한 번만 돌려준다.
+    let mut generated_private_key: Option<String> = None;
     let application_public_key = match lic.application_public_key.as_deref() {
-        Some(pem) if !pem.trim().is_empty() => Some(
-            parse_application_public_key(pem)
-                .ok_or_else(|| bad_request("application_public_key is not a valid Ed25519 PEM"))?,
-        ),
-        _ => None,
+        Some(pem) if !pem.trim().is_empty() => parse_application_public_key(pem)
+            .ok_or_else(|| bad_request("application_public_key is not a valid Ed25519 PEM"))?,
+        _ => {
+            let pair = generate_application_keypair().map_err(|e| internal(&e.to_string()))?;
+            let parsed = parse_application_public_key(&pair.public_pem)
+                .ok_or_else(|| internal("generated application key is not usable"))?;
+            {
+                let conn = state.db.lock().map_err(|e| internal(&e.to_string()))?;
+                let updated = conn
+                    .execute(
+                        "UPDATE licenses SET application_public_key = ?2
+                         WHERE license_id = ?1 AND (application_public_key IS NULL OR application_public_key = '')",
+                        params![lic.license_id, pair.public_pem],
+                    )
+                    .map_err(|e| internal(&e.to_string()))?;
+                if updated == 0 {
+                    return Err(conflict("application key already exists for this license"));
+                }
+            }
+            log_audit(
+                &state,
+                &user.username,
+                "application.key.generate",
+                Some(&lic.license_id),
+                None,
+            );
+            generated_private_key = Some(pair.private_pem);
+            parsed
+        }
     };
-    let app_id = application_public_key.as_ref().map(application_id);
-    if let Some(id) = app_id.as_deref() {
-        req = req.application_id(id);
-    }
+    let app_id = application_id(&application_public_key);
+    req = req.application_id(&app_id);
     let target_language = lic
         .target_language
         .as_deref()
@@ -549,19 +669,11 @@ pub async fn issue_certificate(
         .map_err(|e| bad_request(&e.to_string()))?;
     let cert_json = serde_json::to_string(&cert).map_err(|e| internal(&e.to_string()))?;
 
-    // 이미지의 발급 흐름: P를 LH_Pri로 서명한 결과를 AK2(Z_Pub)로 암호화해
-    // LIC를 만든다. AK2가 없으면 암호화 LIC를 만들 수 없으므로 평문
-    // 인증서만 저장하고 그 사실을 응답에 함께 알린다.
-    let encrypted: Option<EncryptedLicense> = application_public_key
-        .as_ref()
-        .map(|z_pub| encrypt_license(&cert, z_pub, &state.issuer))
-        .transpose()
+    // 라이선스를 Application 공개키로 암호화해 저장한다. 공개키는 생성 시점에
+    // 이미 확인되므로 여기서는 암호화만 수행한다.
+    let encrypted = encrypt_license(&cert, &application_public_key, &state.issuer)
         .map_err(|e| bad_request(&e.to_string()))?;
-    let encrypted_json = encrypted
-        .as_ref()
-        .map(serde_json::to_string)
-        .transpose()
-        .map_err(|e| internal(&e.to_string()))?;
+    let encrypted_json = serde_json::to_string(&encrypted).map_err(|e| internal(&e.to_string()))?;
     // 발급 시점의 공개키·key_id를 이력 DB에 함께 저장한다. 나중에 개인키가
     // 교체되어도 이 인증서를 검증할 공개키를 항상 추출할 수 있다.
     let sign_key_id = cert.key_id.clone();
@@ -586,16 +698,17 @@ pub async fn issue_certificate(
         Some(&cert.certificate_id),
     );
     let parsed: Value = serde_json::from_str(&cert_json).unwrap_or(Value::Null);
-    let encrypted_value = encrypted
-        .as_ref()
-        .and_then(|e| serde_json::to_value(e).ok())
-        .unwrap_or(Value::Null);
+    let encrypted_value = serde_json::to_value(&encrypted).unwrap_or(Value::Null);
     Ok(Json(json!({
         "certificate": parsed,
         "certificate_id": cert.certificate_id,
-        "encrypted_license": if encrypted.is_some() { encrypted_value } else { Value::Null },
+        "encrypted_license": encrypted_value,
         "application_id": app_id,
         "target_language": target_language,
+        // 키 없이 등록된 라이선스를 발급하면서 새 키를 만든 경우에만 참이다.
+        // 개인키는 이 응답에서 한 번만 나오므로 배포 대상 앱에 바로 심어야 한다.
+        "application_key_generated": generated_private_key.is_some(),
+        "application_private_key": generated_private_key,
     })))
 }
 
@@ -647,7 +760,7 @@ pub async fn download_encrypted_license(
         )
         .optional()
         .map_err(|e| internal(&e.to_string()))?
-        .ok_or_else(|| not_found("no encrypted license issued (register AK2 first)"))?
+        .ok_or_else(|| not_found("no encrypted license has been issued for this license"))?
     };
     let mut hdrs = HeaderMap::new();
     hdrs.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
@@ -680,7 +793,7 @@ pub async fn get_encrypted_license(
         .optional()
         .map_err(|e| internal(&e.to_string()))?
         .flatten()
-        .ok_or_else(|| not_found("no encrypted license issued (register AK2 first)"))?
+        .ok_or_else(|| not_found("no encrypted license has been issued for this license"))?
     };
     let parsed: Value = serde_json::from_str(&envelope).unwrap_or(Value::Null);
     Ok(Json(parsed))

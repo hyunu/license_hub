@@ -22,9 +22,9 @@ pub struct License {
     pub metadata: Option<String>,
     /// P의 Target Language (이미지 1.1). C/C++/C#/Python 등.
     pub target_language: Option<String>,
-    /// P를 암호화할 Application 공개키(AK2 = Z_Pub, PEM). 없으면 평문 인증서만 발급된다.
+    /// Application 공개키(Z_Pub, PEM). 라이선스를 이 키로 암호화한다.
     pub application_public_key: Option<String>,
-    /// AK2에서 파생한 Application ID (RS-7: 수동 입력이 아니라 공개키에서 도출).
+    /// Application 공개키에서 파생한 Application ID.
     pub application_id: Option<String>,
     pub created_at: String,
     pub certificates: i64,

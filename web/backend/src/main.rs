@@ -104,6 +104,10 @@ fn main() {
             "/api/licenses/{id}/license/download",
             get(routes::download_encrypted_license),
         )
+        .route(
+            "/api/licenses/{id}/application-public-key/download",
+            get(routes::download_application_public_key),
+        )
         .route("/api/licenses/{id}/status", post(routes::license_status))
         .route(
             "/api/users",

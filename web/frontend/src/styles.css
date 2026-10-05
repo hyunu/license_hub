@@ -137,6 +137,8 @@ a { color: inherit; }
 
 /* ---------- 섹션 ---------- */
 .sec { margin-bottom: 28px; }
+/* 개인키 한 번만 안내하는 경고 구역 */
+.sec.warn { border: 1px solid #d0a09c; border-radius: 8px; padding: 14px 16px; background: rgba(190, 60, 60, 0.06); }
 .sec-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
 .sec-title { font-family: var(--serif); font-size: 16px; margin: 0; font-weight: 700; }
 .sec-note { font-size: 12px; color: var(--muted); }
