@@ -9,6 +9,17 @@ function now(): string {
   return new Date().toISOString()
 }
 
+// 데모용 AK2(Z_Pub) 예시 값. 실제 운영에서는 Application 이 Z_Pri 와 함께
+// 제공해야 하며, 서버는 이 공개키로만 P를 암호화한다.
+const DEMO_AK2_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA0M2VbFmvMEfM0mHIvbjJDlXhcHnRIcHwtLbOwtCQUzMxLcTt
+oJ+GZ2Q1Yh0Yl0l8nS0a9Xk0CkL8Q0m1oE1nJ2CkL3wR8kY5pQ0m0Xk0CkL8Q0m1o
+E1nJ2CkL3wR8kY5pQ0m0Xk0CkL8Q0m1oE1nJ2CkL3wR8kY5pQ0m0Xk0CkL8Q0m1o
+-----END PUBLIC KEY-----`
+
+// RS-7: Application ID는 수동 입력이 아니라 AK2 에서 도출한다.
+const DEMO_APP_ID = '1-4bKc9xQmL2pT7vRzY0dNf8W3sH6gJ1aEuX5iOyC'
+
 export const demoLicenses: License[] = [
   {
     id: 1,
@@ -22,6 +33,10 @@ export const demoLicenses: License[] = [
     status: 'active',
     created_at: now(),
     certificates: 1,
+    target_language: 'cpp',
+    application_public_key: DEMO_AK2_PEM,
+    application_id: DEMO_APP_ID,
+    encrypted_license: { schema_version: 1, key_id: 'license-signing-key', encrypted_for: DEMO_APP_ID },
   },
   {
     id: 2,
@@ -35,6 +50,10 @@ export const demoLicenses: License[] = [
     status: 'active',
     created_at: now(),
     certificates: 2,
+    target_language: 'csharp',
+    application_public_key: DEMO_AK2_PEM,
+    application_id: DEMO_APP_ID,
+    encrypted_license: { schema_version: 1, key_id: 'license-signing-key', encrypted_for: DEMO_APP_ID },
   },
   {
     id: 3,
@@ -48,6 +67,10 @@ export const demoLicenses: License[] = [
     status: 'blacklisted',
     created_at: now(),
     certificates: 0,
+    target_language: null,
+    application_public_key: null,
+    application_id: null,
+    encrypted_license: null,
   },
 ]
 
@@ -85,6 +108,7 @@ export function demoLicensesByStatus(status?: string): License[] {
 export function demoCreateLicense(body: Record<string, unknown>): License {
   seq += 1
   const licenseId = String(body.license_id ?? '').trim() || demoLicenseId()
+  const ak2 = String(body.application_public_key ?? '').trim()
   const lic: License = {
     id: seq,
     license_id: licenseId,
@@ -97,6 +121,10 @@ export function demoCreateLicense(body: Record<string, unknown>): License {
     status: 'active',
     created_at: now(),
     certificates: 0,
+    target_language: String(body.target_language ?? '').trim() || null,
+    application_public_key: ak2 || null,
+    application_id: ak2 ? DEMO_APP_ID : null,
+    encrypted_license: null,
   }
   demoLicenses.unshift(lic)
   demoAudit.unshift({ id: seq + 1000, actor: 'admin', action: 'license.create', target: lic.license_id, detail: null, created_at: now() })
@@ -111,7 +139,13 @@ function demoLicenseId(): string {
   return `${s.slice(0, 4)}-${s.slice(4)}`
 }
 
-export function demoIssueCertificate(id: number): { certificate: Record<string, unknown>; certificate_id: string } {
+export function demoIssueCertificate(id: number): {
+  certificate: Record<string, unknown>
+  certificate_id: string
+  encrypted_license: Record<string, unknown> | null
+  application_id: string | null
+  target_language: string
+} {
   const lic = demoLicenses.find((l) => l.id === id)
   const level = lic?.level ?? 1
   const certificateId = `CERT-${seq++}`
@@ -122,6 +156,8 @@ export function demoIssueCertificate(id: number): { certificate: Record<string, 
     level,
     product: lic?.product ?? 'SampleProduct',
     version: lic?.version ?? '1.0.0',
+    application_id: lic?.application_id ?? undefined,
+    target_language: lic?.target_language ?? 'any',
     issued_at: '2026-01-01T00:00:00Z',
     expires_at: lic?.expires_at ?? '2027-01-01T00:00:00Z',
     issuer: 'LicenseHub',
@@ -129,8 +165,38 @@ export function demoIssueCertificate(id: number): { certificate: Record<string, 
     key_id: 'license-signing-key',
     signature: 'DEMO-SIGNATURE-' + certificateId,
   }
+  if (lic) lic.certificates += 1
+
+  // AK2가 있을 때만 P를 LH_Pri로 서명한 뒤 AK2로 암호화한 LIC를 만든다.
+  let encrypted: Record<string, unknown> | null = null
+  if (lic?.application_public_key) {
+    encrypted = demoEncryptedLicense(certificateId)
+    lic.encrypted_license = {
+      schema_version: 1,
+      key_id: 'license-signing-key',
+      encrypted_for: lic.application_id ?? '',
+    }
+  }
   demoAudit.unshift({ id: seq + 2000, actor: 'admin', action: 'certificate.issue', target: lic?.license_id ?? null, detail: certificateId, created_at: now() })
-  return { certificate: cert, certificate_id: certificateId }
+  return {
+    certificate: cert,
+    certificate_id: certificateId,
+    encrypted_license: encrypted,
+    application_id: lic?.application_id ?? null,
+    target_language: lic?.target_language ?? 'any',
+  }
+}
+
+// 이미지의 LIC: P 원문은 ciphertext 안에만 존재한다.
+export function demoEncryptedLicense(certificateId = 'CERT-DEMO'): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    key_id: 'license-signing-key',
+    ephemeral_public_key: 'DEMO-EPHEMERAL-PUBLIC-KEY',
+    nonce: 'DEMO-AES-GCM-NONCE',
+    ciphertext: 'BASE64-CIPHERTEXT-' + certificateId,
+    signature: 'BASE64-LHPRI-SIGNATURE',
+  }
 }
 
 export function demoSetStatus(id: number, status: string): void {

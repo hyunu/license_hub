@@ -163,6 +163,13 @@ pub struct Certificate {
     pub product: String,
     /// 인증서가 허용하는 제품 버전.
     pub version: String,
+    /// 이미지의 P 필드인 Application ID. AK2(Z_Pub)에서 도출한 값이며,
+    /// 서명 대상에 포함되어 X가 실행 환경과 비교한다(RS-7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub application_id: Option<String>,
+    /// 이미지의 P 필드인 Target Language. 사용이 허용된 언어.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_language: Option<String>,
     /// 발급 시각. RFC 3339 형식의 UTC 값을 사용한다.
     pub issued_at: String,
     /// 만료 시각. 검증 시 현재 시각이 이 값 이상이면 만료로 처리한다.
@@ -224,6 +231,8 @@ pub struct CertificateRequest {
     expires_at: String,
     verification_url: Option<String>,
     device_id: Option<String>,
+    application_id: Option<String>,
+    target_language: Option<String>,
     metadata: BTreeMap<String, Value>,
     children: Vec<Certificate>,
 }
@@ -256,6 +265,8 @@ impl CertificateRequest {
             expires_at: "2027-01-01T00:00:00Z".into(),
             verification_url: None,
             device_id: None,
+            application_id: None,
+            target_language: None,
             metadata: BTreeMap::new(),
             children: Vec::new(),
         }
@@ -315,6 +326,31 @@ impl CertificateRequest {
     //--------------------------------------------------------------------------------
     pub fn metadata(mut self, key: impl Into<String>, value: Value) -> Self {
         self.metadata.insert(key.into(), value);
+        self
+    }
+
+    //--------------------------------------------------------------------------------
+    // 이미지의 P 필드인 Application ID를 설정한다.
+    //
+    // 이 값은 AK2(Z_Pub)에서 도출한 값이어야 하며(RS-7), 서명 대상에 포함되므로
+    // 발급 후 변경할 수 없다. X는 서명된 이 값과 실행 중인 앱의 측정값을 비교한다.
+    // - 인자: value: Application ID
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
+    pub fn application_id(mut self, value: impl Into<String>) -> Self {
+        self.application_id = Some(value.into());
+        self
+    }
+
+    //--------------------------------------------------------------------------------
+    // 이미지의 P 필드인 Target Language를 설정한다.
+    //
+    // 사용이 제한된 언어를 지정하면 해당 언어 바인딩에서만 사용할 수 있다.
+    // - 인자: value: 대상 언어 (예: "cpp", "csharp", "python") 또는 "any"
+    // - 리턴: self (체이닝용)
+    //--------------------------------------------------------------------------------
+    pub fn target_language(mut self, value: impl Into<String>) -> Self {
+        self.target_language = Some(value.into());
         self
     }
 
@@ -407,6 +443,8 @@ impl Issuer {
             level: request.level,
             product: request.product,
             version: request.version,
+            application_id: request.application_id,
+            target_language: request.target_language,
             issued_at: request.issued_at,
             expires_at: request.expires_at,
             issuer: "LicenseHub".into(),
@@ -448,7 +486,8 @@ pub enum ServerStatus {
 /// 검증 시점의 외부 환경과 정책 정보.
 ///
 /// Core는 네트워크에 연결하지 않으므로 서버 승인 여부와 Blacklist 결과를
-/// 호출자가 채워서 전달한다. `now`도 호출자가 지정하므로 테스트에서
+/// 호출자가 채워서 전달한다. `application_id`와 `target_language`는 이미지의
+/// P 필드를 검증 환경과 대조하는 데 사용한다. `now`도 호출자가 지정하므로 테스트에서
 /// 시간을 고정할 수 있고, 제품 정책에 따라 시간 기준을 통제할 수 있다.
 #[derive(Debug, Clone)]
 pub struct VerificationContext {
@@ -465,6 +504,11 @@ pub struct VerificationContext {
     /// 실행 파일 이름으로 앱 단위 바인딩을 강화한다. `host_executable_name()`
     /// 으로 실제 실행 파일 이름을 측정해 채울 수 있다.
     pub executable_name: Option<String>,
+    /// 설정된 경우 이미지의 P 필드인 서명된 Application ID와 일치해야 한다(RS-7).
+    /// `envelope::application_id`로 AK2(Z_Pub)에서 도출한 값을 넣는다.
+    pub application_id: Option<String>,
+    /// 설정된 경우 인증서의 Target Language와 일치해야 한다.
+    pub target_language: Option<String>,
     /// L3 검증에 사용할 현재 장치의 원본 ID.
     pub device_id: Option<String>,
     /// L2/L3 서버 검증 결과.
@@ -492,6 +536,8 @@ impl Default for VerificationContext {
             version: None,
             product_id: None,
             executable_name: None,
+            application_id: None,
+            target_language: None,
             device_id: None,
             server_status: None,
             blacklisted: false,
@@ -723,6 +769,21 @@ pub(crate) fn verify_at_depth(
             return Err(VerificationError::PolicyRejected);
         }
     }
+    // 이미지의 P 필드인 Application ID를 실행 환경과 대조한다(RS-3, RS-7).
+    // 서명된 값이므로 인증서가 다른 앱의 ID를 그대로 담을 수 없다.
+    if let Some(app_id) = context.application_id.as_deref()
+        && app_id != certificate.application_id.as_deref().unwrap_or("")
+    {
+        return Err(VerificationError::PolicyRejected);
+    }
+    // Target Language를 대조한다. 인증서가 특정 언어로 발급되었으면
+    // 다른 언어 런타임에서는 사용할 수 없다.
+    if let Some(lang) = context.target_language.as_deref()
+        && lang != "any"
+        && lang != certificate.target_language.as_deref().unwrap_or("any")
+    {
+        return Err(VerificationError::PolicyRejected);
+    }
     // 등급 필드와 부가 필드의 조합을 확인한다. 예를 들어 L1에 server나
     // device 정보가 붙어 있으면 발급 정책 위반으로 간주한다.
     match certificate.level {
@@ -930,6 +991,8 @@ pub(crate) struct FfiVerificationContext {
     version: Option<String>,
     product_id: Option<String>,
     executable_name: Option<String>,
+    application_id: Option<String>,
+    target_language: Option<String>,
     device_id: Option<String>,
     server_status: Option<String>,
     #[serde(default)]
@@ -959,6 +1022,8 @@ impl FfiVerificationContext {
             version: self.version,
             product_id: self.product_id,
             executable_name: self.executable_name,
+            application_id: self.application_id,
+            target_language: self.target_language,
             device_id: self.device_id,
             server_status,
             blacklisted: self.blacklisted,
@@ -1151,6 +1216,59 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn p_fields_are_signed_and_compared_against_runtime() {
+        let issuer = Issuer::generate("test-key");
+        let certificate = issuer
+            .issue(
+                CertificateRequest::new("license-1", 1, "DXi", "1.2.0")
+                    .expires_at("2030-01-01T00:00:00Z")
+                    .application_id("1-app-id-from-ak2")
+                    .target_language("cpp"),
+            )
+            .unwrap();
+        // 이미지의 P 필드는 서명 대상에 포함된다.
+        assert_eq!(
+            certificate.application_id.as_deref(),
+            Some("1-app-id-from-ak2")
+        );
+        assert_eq!(certificate.target_language.as_deref(), Some("cpp"));
+
+        let matching = VerificationContext {
+            application_id: Some("1-app-id-from-ak2".into()),
+            target_language: Some("cpp".into()),
+            ..VerificationContext::at("2027-01-01T00:00:00Z")
+        };
+        assert!(verify(&certificate, &issuer.verifying_key(), &matching).is_ok());
+
+        // 다른 Application ID(APP-002의 AK2에서 도출된 값)로 실행하면 거부된다.
+        let other_app = VerificationContext {
+            application_id: Some("1-other-app-id".into()),
+            ..matching.clone()
+        };
+        assert_eq!(
+            verify(&certificate, &issuer.verifying_key(), &other_app),
+            Err(VerificationError::PolicyRejected)
+        );
+
+        // 다른 언어 런타임에서도 거부된다.
+        let other_lang = VerificationContext {
+            target_language: Some("python".into()),
+            ..matching.clone()
+        };
+        assert_eq!(
+            verify(&certificate, &issuer.verifying_key(), &other_lang),
+            Err(VerificationError::PolicyRejected)
+        );
+
+        // "any" 는 언어 제한을 두지 않는다.
+        let any_lang = VerificationContext {
+            target_language: Some("any".into()),
+            ..matching
+        };
+        assert!(verify(&certificate, &issuer.verifying_key(), &any_lang).is_ok());
     }
 
     #[test]

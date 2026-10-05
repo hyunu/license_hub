@@ -96,6 +96,14 @@ fn main() {
             "/api/licenses/{id}/download",
             get(routes::download_certificate),
         )
+        .route(
+            "/api/licenses/{id}/license",
+            get(routes::get_encrypted_license),
+        )
+        .route(
+            "/api/licenses/{id}/license/download",
+            get(routes::download_encrypted_license),
+        )
         .route("/api/licenses/{id}/status", post(routes::license_status))
         .route(
             "/api/users",

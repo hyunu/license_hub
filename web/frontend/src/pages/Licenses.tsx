@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, downloadCertificate, downloadLicensePublicKey, getCertificate, type License } from '../api'
+import { api, downloadCertificate, downloadEncryptedLicense, downloadLicensePublicKey, getCertificate, getEncryptedLicense, type License } from '../api'
 import { Toasts, useToasts } from '../toast'
 
+// 이미지의 P 필드 (Application ID, Target Language, Version, Level, Owner,
+// Expired Date, Meta Data) 를 그대로 입력 폼으로 옮긴다.
 const EMPTY_FORM = {
   license_id: '',
   product: '',
@@ -11,7 +13,19 @@ const EMPTY_FORM = {
   device_id: '',
   expires_at: '2027-01-01T00:00:00Z',
   metadata: '',
+  target_language: 'cpp',
+  application_public_key: '',
 }
+
+// 이미지의 Target Language 에 대응하는 런타임. "any" 는 제한 없음.
+const LANGUAGES = [
+  { value: 'any', label: 'any — 언어 제한 없음' },
+  { value: 'cpp', label: 'C / C++' },
+  { value: 'csharp', label: 'C# / .NET' },
+  { value: 'python', label: 'Python' },
+  { value: 'nodejs', label: 'Node.js' },
+  { value: 'rust', label: 'Rust' },
+]
 
 export function Licenses() {
   const [licenses, setLicenses] = useState<License[]>([])
@@ -20,7 +34,13 @@ export function Licenses() {
   const [busy, setBusy] = useState(false)
   const { toasts, ok, bad } = useToasts()
   const [showForm, setShowForm] = useState(false)
-  const [certView, setCertView] = useState<{ license: string; cert: Record<string, unknown> } | null>(null)
+  const [certView, setCertView] = useState<{
+    license: string
+    cert: Record<string, unknown>
+    lic?: Record<string, unknown> | null
+    appId?: string | null
+    lang?: string
+  } | null>(null)
 
   const load = (status?: string) => {
     api
@@ -48,6 +68,9 @@ export function Licenses() {
       if (form.license_id.trim()) body.license_id = form.license_id.trim()
       if (form.device_id) body.device_id = form.device_id
       if (form.metadata.trim()) body.metadata = form.metadata.trim()
+      if (form.target_language.trim()) body.target_language = form.target_language
+      // AK2(Z_Pub)를 주면 발급 시 P가 이 키로 암호화되어 LIC로 저장된다.
+      if (form.application_public_key.trim()) body.application_public_key = form.application_public_key.trim()
       const created = await api.createLicense(body)
       ok(`라이선스 ${created.license_id} 생성됨`)
       setForm(EMPTY_FORM)
@@ -63,11 +86,55 @@ export function Licenses() {
   const issue = async (lic: License) => {
     try {
       const res = await api.issue(lic.id)
-      setCertView({ license: lic.license_id, cert: res.certificate })
-      ok(`인증서 ${res.certificate_id} 발급됨`)
+      setCertView({
+        license: lic.license_id,
+        cert: res.certificate,
+        lic: res.encrypted_license,
+        appId: res.application_id,
+        lang: res.target_language,
+      })
+      if (res.encrypted_license) {
+        ok(`LIC 발급됨 — AK2(Z_Pub)로 암호화된 ${lic.license_id}.lic.json`)
+      } else if (lic.application_public_key) {
+        ok(`인증서 ${res.certificate_id} 발급됨`)
+      } else {
+        ok(`인증서 ${res.certificate_id} 발급됨 — AK2 미등록이므로 암호화 LIC는 없습니다`)
+      }
       load(filter)
     } catch (err) {
       bad(err instanceof Error ? err.message : 'issue failed')
+    }
+  }
+
+  // 이미지의 최종 산출물인 암호화된 LIC 를 내려받는다.
+  const downloadLic = async (lic: License) => {
+    if (!lic.encrypted_license) {
+      bad(
+        lic.application_public_key
+          ? `'${lic.license_id}'에 아직 발급된 LIC가 없습니다 — 먼저 발급하세요`
+          : `'${lic.license_id}'에 AK2(Z_Pub)가 없어 암호화 LIC를 만들 수 없습니다`,
+      )
+      return
+    }
+    try {
+      await downloadEncryptedLicense(lic.id, lic.license_id)
+      ok(`암호화된 LIC 다운로드됨 — ${lic.license_id}.lic.json`)
+    } catch (err) {
+      bad(err instanceof Error ? err.message : 'LIC download failed')
+    }
+  }
+
+  const viewLic = async (lic: License) => {
+    if (!lic.encrypted_license) {
+      bad(`'${lic.license_id}'에 AK2(Z_Pub) 기반 LIC가 없습니다`)
+      return
+    }
+    try {
+      const licView = await getEncryptedLicense(lic.id)
+      const cert = await getCertificate(lic.id)
+      setCertView({ license: lic.license_id, cert, lic: licView, appId: lic.application_id, lang: lic.target_language ?? 'any' })
+    } catch (err) {
+      bad(err instanceof Error ? err.message : 'LIC load failed')
     }
   }
 
@@ -90,7 +157,7 @@ export function Licenses() {
     }
     try {
       const cert = await getCertificate(lic.id)
-      setCertView({ license: lic.license_id, cert })
+      setCertView({ license: lic.license_id, cert, lic: null, appId: lic.application_id, lang: lic.target_language ?? 'any' })
     } catch (err) {
       bad(err instanceof Error ? err.message : 'certificate load failed')
     }
@@ -123,6 +190,11 @@ export function Licenses() {
       </header>
 
       <div className="content">
+        <p className="muted small" style={{ margin: '0 0 12px' }}>
+          이미지 발급 흐름: P(Application ID · Target Language · Version · Level · Owner · 만료일 · Meta Data)를 LH_Pri로 서명한 뒤,
+          AK2(Z_Pub)로 암호화해 LIC로 저장합니다. Application ID 는 AK2 에서 자동 도출되므로 직접 입력하지 않습니다(RS-7).
+        </p>
+
         <div className="toolbar">
           <div className="left">
             <label className="f">
@@ -160,8 +232,23 @@ export function Licenses() {
                   <option value="3">3 — Device-Bound</option>
                 </select>
               </label>
-              <label className="f"><span className="lbl">소유자 <span className="req">*</span></span>
+              <label className="f"><span className="lbl">소유자 (Owner) <span className="req">*</span></span>
                 <input value={form.holder} onChange={(e) => set('holder', e.target.value)} required />
+              </label>
+              <label className="f">Target Language
+                <select value={form.target_language} onChange={(e) => set('target_language', e.target.value)}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l.value} value={l.value}>{l.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="f wide"><span className="lbl">AK2 (Z_Pub) — Application 공개키 PEM</span>
+                <textarea
+                  rows={3}
+                  value={form.application_public_key}
+                  onChange={(e) => set('application_public_key', e.target.value)}
+                  placeholder={'-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----'}
+                />
               </label>
               <label className="f">Device ID (L3)
                 <input value={form.device_id} onChange={(e) => set('device_id', e.target.value)} />
@@ -183,25 +270,44 @@ export function Licenses() {
         <table className="ledger">
           <thead>
             <tr>
-              <th>License</th><th>제품 / 버전</th><th>등급</th><th>소유자</th>
-              <th>만료</th><th>상태</th><th>인증서</th><th>작업</th>
+              <th>License</th><th>제품 / 버전</th><th>등급</th><th>언어</th>
+              <th>Application ID</th><th>소유자</th>
+              <th>만료</th><th>상태</th><th>LIC</th><th>작업</th>
             </tr>
           </thead>
           <tbody>
             {licenses.length === 0 && (
-              <tr><td colSpan={8} className="muted small">등록된 라이선스가 없습니다 — '새 라이선스'로 추가하세요</td></tr>
+              <tr><td colSpan={10} className="muted small">등록된 라이선스가 없습니다 — '새 라이선스'로 추가하세요</td></tr>
             )}
             {licenses.map((l) => (
               <tr key={l.id}>
                 <td className="mono">{l.license_id}</td>
                 <td>{l.product} <span className="muted">{l.version}</span></td>
                 <td>L{l.level}</td>
+                <td className="mono small">{l.target_language ?? '—'}</td>
+                <td className="mono small" title={l.application_id ?? undefined}>
+                  {l.application_id ? `${l.application_id.slice(0, 12)}…` : <span className="muted">AK2 없음</span>}
+                </td>
                 <td>{l.holder}</td>
                 <td className="mono">{l.expires_at.slice(0, 10)}</td>
                 <td><span className={`status ${l.status}`}><span className="sq" />{l.status}</span></td>
-                <td className="mono muted">{l.level === 3 && l.device_id ? 'bound' : l.certificates > 0 ? `${l.certificates}회` : '—'}</td>
+                <td className="mono muted">
+                  {l.encrypted_license ? (
+                    <span title={`AK2 암호화 · key_id ${l.encrypted_license.key_id}`}>암호화</span>
+                  ) : l.level === 3 && l.device_id ? (
+                    'bound'
+                  ) : l.certificates > 0 ? (
+                    `${l.certificates}회`
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className="actions">
                   <button className="btn small primary" onClick={() => issue(l)}>발급</button>
+                  <button className="btn small" onClick={() => viewLic(l)} disabled={!l.encrypted_license}
+                    title={l.encrypted_license ? '암호화된 LIC 확인' : 'AK2 미등록 또는 미발급'}>LIC</button>
+                  <button className="btn small" onClick={() => downloadLic(l)} disabled={!l.encrypted_license}
+                    title={l.encrypted_license ? `${l.license_id}.lic.json 내려받기` : 'AK2 미등록 또는 미발급'}>LIC↓</button>
                   <button className="btn small" onClick={() => viewCert(l)} disabled={l.certificates === 0}
                     title={l.certificates === 0 ? '인증서를 먼저 발급하세요' : undefined}>보기</button>
                   <button className="btn small" onClick={() => download(l)} disabled={l.certificates === 0}
@@ -219,10 +325,41 @@ export function Licenses() {
         {certView && (
           <section className="sec" style={{ marginTop: 22 }}>
             <div className="sec-head">
-              <h3 className="sec-title">발급된 인증서 — {certView.license}</h3>
-              <button className="btn small" onClick={() => setCertView(null)}>닫기</button>
+              <h3 className="sec-title">
+                {certView.lic ? '암호화된 LIC (EncryptedLicense)' : '서명 인증서 (X)'} — {certView.license}
+              </h3>
+              <div className="actions">
+                {certView.lic && (
+                  <button
+                    className="btn small primary"
+                    onClick={async () => {
+                      try {
+                        await downloadEncryptedLicense(
+                          licenses.find((l) => l.license_id === certView.license)?.id ?? 0,
+                          certView.license,
+                        )
+                      } catch (err) {
+                        bad(err instanceof Error ? err.message : 'LIC download failed')
+                      }
+                    }}
+                  >
+                    LIC 내려받기
+                  </button>
+                )}
+                <button className="btn small" onClick={() => setCertView(null)}>닫기</button>
+              </div>
             </div>
-            <pre className="jsonbox">{JSON.stringify(certView.cert, null, 2)}</pre>
+            {certView.lic ? (
+              <>
+                <p className="muted small" style={{ margin: '0 0 8px' }}>
+                  P 원문은 ciphertext 안에만 존재하므로 Owner·만료일 등은 이 화면에서 보이지 않습니다.
+                  Application 은 AK1(Z_Pri)로 복호화한 뒤 X 내장 LK2로 서명을 검증합니다.
+                </p>
+                <pre className="jsonbox">{JSON.stringify(certView.lic, null, 2)}</pre>
+              </>
+            ) : (
+              <pre className="jsonbox">{JSON.stringify(certView.cert, null, 2)}</pre>
+            )}
           </section>
         )}
       </div>

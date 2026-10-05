@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS licenses (
     expires_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',
     metadata TEXT,
+    target_language TEXT,
+    application_public_key TEXT,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS certificates (
@@ -37,6 +39,9 @@ CREATE TABLE IF NOT EXISTS certificates (
     cert_json TEXT NOT NULL,
     key_id TEXT,
     public_key TEXT,
+    encrypted_license TEXT,
+    application_id TEXT,
+    target_language TEXT,
     issued_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS blacklist (
@@ -74,11 +79,26 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if !has_column(conn, "licenses", "metadata") {
         conn.execute_batch("ALTER TABLE licenses ADD COLUMN metadata TEXT;")?;
     }
+    if !has_column(conn, "licenses", "target_language") {
+        conn.execute_batch("ALTER TABLE licenses ADD COLUMN target_language TEXT;")?;
+    }
+    if !has_column(conn, "licenses", "application_public_key") {
+        conn.execute_batch("ALTER TABLE licenses ADD COLUMN application_public_key TEXT;")?;
+    }
     if !has_column(conn, "certificates", "key_id") {
         conn.execute_batch("ALTER TABLE certificates ADD COLUMN key_id TEXT;")?;
     }
     if !has_column(conn, "certificates", "public_key") {
         conn.execute_batch("ALTER TABLE certificates ADD COLUMN public_key TEXT;")?;
+    }
+    if !has_column(conn, "certificates", "encrypted_license") {
+        conn.execute_batch("ALTER TABLE certificates ADD COLUMN encrypted_license TEXT;")?;
+    }
+    if !has_column(conn, "certificates", "application_id") {
+        conn.execute_batch("ALTER TABLE certificates ADD COLUMN application_id TEXT;")?;
+    }
+    if !has_column(conn, "certificates", "target_language") {
+        conn.execute_batch("ALTER TABLE certificates ADD COLUMN target_language TEXT;")?;
     }
     Ok(())
 }

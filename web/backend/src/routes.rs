@@ -4,8 +4,10 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use ed25519_dalek::VerifyingKey;
+use licensehub_core::envelope::{EncryptedLicense, application_id, encrypt_license};
 use licensehub_core::{CertificateRequest, Issuer};
-use pkcs8::{EncodePublicKey, LineEnding};
+use pkcs8::{DecodePublicKey, EncodePublicKey, LineEnding};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -292,10 +294,38 @@ pub async fn list_licenses(
     Ok(Json(out))
 }
 
-const LICENSE_SELECT: &str = "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at, \
-(SELECT COUNT(*) FROM certificates WHERE certificates.license_id = licenses.license_id) FROM licenses";
+const LICENSE_SELECT: &str = "SELECT id, license_id, product, version, level, holder, device_id, expires_at, status, metadata, target_language, application_public_key, created_at, \
+(SELECT COUNT(*) FROM certificates WHERE certificates.license_id = licenses.license_id), \
+(SELECT application_id FROM certificates WHERE certificates.license_id = licenses.license_id ORDER BY id DESC LIMIT 1), \
+(SELECT encrypted_license FROM certificates WHERE certificates.license_id = licenses.license_id ORDER BY id DESC LIMIT 1) FROM licenses";
 
 fn map_license(row: &rusqlite::Row) -> rusqlite::Result<License> {
+    // RS-7: Application ID는 사용자가 입력하지 않고 AK2(Z_Pub)에서
+    // 파생한 값만 담는다. UI에도 이 값만 노출한다.
+    let application_id: Option<String> = row.get(14)?;
+    let application_public_key: Option<String> = row.get(11)?;
+    let encrypted_license: Option<String> = row.get(15)?;
+    let encrypted = match encrypted_license {
+        Some(raw) if !raw.trim().is_empty() => {
+            let parsed: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+            Some(EncryptedLicenseInfo {
+                schema_version: parsed
+                    .get("schema_version")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32,
+                key_id: parsed
+                    .get("key_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                encrypted_for: application_id
+                    .clone()
+                    .or(application_public_key.clone())
+                    .unwrap_or_default(),
+            })
+        }
+        _ => None,
+    };
     Ok(License {
         id: row.get(0)?,
         license_id: row.get(1)?,
@@ -307,8 +337,12 @@ fn map_license(row: &rusqlite::Row) -> rusqlite::Result<License> {
         expires_at: row.get(7)?,
         status: row.get(8)?,
         metadata: row.get(9)?,
-        created_at: row.get(10)?,
-        certificates: row.get(11)?,
+        target_language: row.get(10)?,
+        application_public_key,
+        application_id,
+        created_at: row.get(12)?,
+        certificates: row.get(13)?,
+        encrypted_license: encrypted,
     })
 }
 
@@ -329,6 +363,17 @@ pub async fn create_license(
         return Err(bad_request("level 3 requires device_id"));
     }
 
+    // AK2(Z_Pub)를 제공했다면 즉시 파싱해 유효성을 확인한다. 잘못된 키로
+    // 발급 요청이 들어오면 여기서 거절해야 발급 단계에서 원문 LIC가 노출되지 않는다.
+    if let Some(pem) = body.application_public_key.as_deref()
+        && !pem.trim().is_empty()
+        && parse_application_public_key(pem).is_none()
+    {
+        return Err(bad_request(
+            "application_public_key must be an Ed25519 public key in PEM (SubjectPublicKeyInfo) form",
+        ));
+    }
+
     // license_id 를 비워두면 시스템이 자동 생성한다 (충돌 시 재생성).
     let auto = body
         .license_id
@@ -346,8 +391,8 @@ pub async fn create_license(
         {
             let db = state.db.lock().unwrap();
             let res = db.execute(
-                "INSERT INTO licenses (license_id, product, version, level, holder, device_id, expires_at, status, metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                params![license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, body.metadata, now_rfc3339()],
+                "INSERT INTO licenses (license_id, product, version, level, holder, device_id, expires_at, status, metadata, target_language, application_public_key, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![license_id, body.product, body.version, body.level, body.holder, body.device_id, body.expires_at, status, body.metadata, body.target_language, body.application_public_key, now_rfc3339()],
             );
             if let Err(e) = res {
                 if e.to_string().contains("UNIQUE") && auto {
@@ -380,6 +425,16 @@ pub async fn create_license(
         )
         .map_err(|e| internal(&e.to_string()))?;
     Ok(Json(lic))
+}
+
+/// P를 암호화할 Application 공개키(AK2 = Z_Pub)를 파싱한다.
+///
+/// 이미지의 AK2에 해당한다. P 본문은 이 키로만 암호화되므로, 잘못된
+/// 형식이 들어오면 LIC가 평문으로 발급될 위험이 있어 발급 전에 거절한다.
+/// - 인자: pem: Ed25519 공개키 PEM(SubjectPublicKeyInfo)
+/// - 리턴: Ok(공개키) 또는 None(형식 오류)
+fn parse_application_public_key(pem: &str) -> Option<VerifyingKey> {
+    VerifyingKey::from_public_key_pem(pem.trim()).ok()
 }
 
 /// 시스템이 자동으로 부여하는 License ID (예: XXXX-XXXX, 혼동 문자 제외).
@@ -449,7 +504,30 @@ pub async fn issue_certificate(
     }
     let mut req =
         CertificateRequest::new(&lic.license_id, lic.level as u8, &lic.product, &lic.version)
-            .expires_at(&lic.expires_at);
+            .expires_at(&lic.expires_at)
+            .issued_at(now_rfc3339());
+
+    // 이미지의 P 필드. Target Language와 Application ID는 서명 대상에
+    // 포함되어야 X가 실행 환경과 비교할 수 있다.
+    let application_public_key = match lic.application_public_key.as_deref() {
+        Some(pem) if !pem.trim().is_empty() => Some(
+            parse_application_public_key(pem)
+                .ok_or_else(|| bad_request("application_public_key is not a valid Ed25519 PEM"))?,
+        ),
+        _ => None,
+    };
+    let app_id = application_public_key.as_ref().map(application_id);
+    if let Some(id) = app_id.as_deref() {
+        req = req.application_id(id);
+    }
+    let target_language = lic
+        .target_language
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("any");
+    req = req.target_language(target_language);
+
     if let Some(meta) = lic.metadata.as_deref()
         && !meta.trim().is_empty()
     {
@@ -470,6 +548,20 @@ pub async fn issue_certificate(
         .issue(req)
         .map_err(|e| bad_request(&e.to_string()))?;
     let cert_json = serde_json::to_string(&cert).map_err(|e| internal(&e.to_string()))?;
+
+    // 이미지의 발급 흐름: P를 LH_Pri로 서명한 결과를 AK2(Z_Pub)로 암호화해
+    // LIC를 만든다. AK2가 없으면 암호화 LIC를 만들 수 없으므로 평문
+    // 인증서만 저장하고 그 사실을 응답에 함께 알린다.
+    let encrypted: Option<EncryptedLicense> = application_public_key
+        .as_ref()
+        .map(|z_pub| encrypt_license(&cert, z_pub, &state.issuer))
+        .transpose()
+        .map_err(|e| bad_request(&e.to_string()))?;
+    let encrypted_json = encrypted
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|e| internal(&e.to_string()))?;
     // 발급 시점의 공개키·key_id를 이력 DB에 함께 저장한다. 나중에 개인키가
     // 교체되어도 이 인증서를 검증할 공개키를 항상 추출할 수 있다.
     let sign_key_id = cert.key_id.clone();
@@ -481,8 +573,8 @@ pub async fn issue_certificate(
     {
         let db = state.db.lock().unwrap();
         db.execute(
-            "INSERT INTO certificates (certificate_id, license_id, level, cert_json, key_id, public_key, issued_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![cert.certificate_id, lic.license_id, lic.level, cert_json, sign_key_id, sign_public_key, now_rfc3339()],
+            "INSERT INTO certificates (certificate_id, license_id, level, cert_json, key_id, public_key, encrypted_license, application_id, target_language, issued_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![cert.certificate_id, lic.license_id, lic.level, cert_json, sign_key_id, sign_public_key, encrypted_json, app_id, target_language, now_rfc3339()],
         )
         .map_err(|e| internal(&e.to_string()))?;
     }
@@ -494,9 +586,17 @@ pub async fn issue_certificate(
         Some(&cert.certificate_id),
     );
     let parsed: Value = serde_json::from_str(&cert_json).unwrap_or(Value::Null);
-    Ok(Json(
-        json!({ "certificate": parsed, "certificate_id": cert.certificate_id }),
-    ))
+    let encrypted_value = encrypted
+        .as_ref()
+        .and_then(|e| serde_json::to_value(e).ok())
+        .unwrap_or(Value::Null);
+    Ok(Json(json!({
+        "certificate": parsed,
+        "certificate_id": cert.certificate_id,
+        "encrypted_license": if encrypted.is_some() { encrypted_value } else { Value::Null },
+        "application_id": app_id,
+        "target_language": target_language,
+    })))
 }
 
 pub async fn download_certificate(
@@ -523,6 +623,67 @@ pub async fn download_certificate(
             .unwrap(),
     );
     Ok((hdrs, cert_json).into_response())
+}
+
+/// 암호화된 LIC(EncryptedLicense 엔벨로프)를 내려받는다.
+///
+/// 이미지의 최종 산출물이다. AK2로 암호화되어 있으므로 파일을 열어도 P의
+/// 원문(Owner, 만료일 등)은 보이지 않는다.
+pub async fn download_encrypted_license(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Response, ApiError> {
+    auth_user(&state, &headers)?;
+    let (license_id, envelope): (String, String) = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT license_id, encrypted_license FROM certificates
+             WHERE license_id = (SELECT license_id FROM licenses WHERE id = ?1)
+               AND encrypted_license IS NOT NULL
+             ORDER BY id DESC LIMIT 1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| internal(&e.to_string()))?
+        .ok_or_else(|| not_found("no encrypted license issued (register AK2 first)"))?
+    };
+    let mut hdrs = HeaderMap::new();
+    hdrs.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    hdrs.insert(
+        header::CONTENT_DISPOSITION,
+        format!("attachment; filename=\"{}.lic.json\"", license_id)
+            .parse()
+            .unwrap(),
+    );
+    Ok((hdrs, envelope).into_response())
+}
+
+/// 암호화된 LIC를 화면에서 확인할 수 있게 JSON으로 반환한다.
+pub async fn get_encrypted_license(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<Value>, ApiError> {
+    auth_user(&state, &headers)?;
+    let envelope: String = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT encrypted_license FROM certificates
+             WHERE license_id = (SELECT license_id FROM licenses WHERE id = ?1)
+               AND encrypted_license IS NOT NULL
+             ORDER BY id DESC LIMIT 1",
+            params![id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| internal(&e.to_string()))?
+        .flatten()
+        .ok_or_else(|| not_found("no encrypted license issued (register AK2 first)"))?
+    };
+    let parsed: Value = serde_json::from_str(&envelope).unwrap_or(Value::Null);
+    Ok(Json(parsed))
 }
 
 // ---------------- Users ----------------

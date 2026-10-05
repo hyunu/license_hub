@@ -1,10 +1,16 @@
-import { demoAddBlacklist, demoAudit, demoBlacklist, demoCreateLicense, demoCreateUser, demoIssueCertificate, demoLicenses, demoLicensesByStatus, demoPublicKey, demoRemoveBlacklist, demoSetStatus, demoStats, demoUsers } from './demo'
+import { demoAddBlacklist, demoAudit, demoBlacklist, demoCreateLicense, demoCreateUser, demoEncryptedLicense, demoIssueCertificate, demoLicenses, demoLicensesByStatus, demoPublicKey, demoRemoveBlacklist, demoSetStatus, demoStats, demoUsers } from './demo'
 
 export interface User {
   id: number
   username: string
   role: string
   created_at: string
+}
+
+export interface EncryptedLicenseInfo {
+  schema_version: number
+  key_id: string
+  encrypted_for: string
 }
 
 export interface License {
@@ -19,6 +25,10 @@ export interface License {
   status: string
   created_at: string
   certificates: number
+  target_language: string | null
+  application_public_key: string | null
+  application_id: string | null
+  encrypted_license: EncryptedLicenseInfo | null
 }
 
 export interface BlacklistEntry {
@@ -86,6 +96,9 @@ function demoRoute<T>(path: string, options: RequestInit): Promise<T> {
   }
   if (basePath.startsWith('/api/licenses/') && basePath.endsWith('/issue')) {
     return Promise.resolve(demoIssueCertificate(Number(basePath.split('/')[3])) as T)
+  }
+  if (basePath.startsWith('/api/licenses/') && basePath.endsWith('/license')) {
+    return Promise.resolve(demoEncryptedLicense() as T)
   }
   if (basePath.startsWith('/api/licenses/') && basePath.endsWith('/status')) {
     demoSetStatus(Number(basePath.split('/')[3]), String(body?.status ?? 'active'))
@@ -164,7 +177,13 @@ export const api = {
   createLicense: (body: Record<string, unknown>) =>
     request<License>('/api/licenses', { method: 'POST', body: JSON.stringify(body) }),
   issue: (id: number) =>
-    request<{ certificate: Record<string, unknown>; certificate_id: string }>(`/api/licenses/${id}/issue`, { method: 'POST' }),
+    request<{
+      certificate: Record<string, unknown>
+      certificate_id: string
+      encrypted_license: Record<string, unknown> | null
+      application_id: string | null
+      target_language: string
+    }>(`/api/licenses/${id}/issue`, { method: 'POST' }),
   setStatus: (id: number, status: string) =>
     request<{ ok: boolean }>(`/api/licenses/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
 
@@ -219,6 +238,38 @@ export async function getCertificate(id: number): Promise<Record<string, unknown
 
 // 라이선스가 사용한 검증 공개키(.pem) 다운로드. 발급 시 이력 DB에 저장된 값을
 // 반환하므로 개인키가 교체되어도 해당 라이선스의 공개키를 받을 수 있다.
+// 이미지의 최종 산출물인 암호화된 LIC를 내려받는다. AK2(Z_Pub)로 암호화되어
+// 있어 파일을 열어도 P의 원문은 노출되지 않는다.
+export async function downloadEncryptedLicense(id: number, licenseId: string): Promise<void> {
+  if (DEMO) {
+    console.info(`[demo] download encrypted LIC for license #${id} -> ${licenseId}.lic.json`)
+    return
+  }
+  const token = localStorage.getItem('lh_token')
+  const res = await fetch(BASE + `/api/licenses/${id}/license/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new Error(`LIC download failed: ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${licenseId}.lic.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// 암호화된 LIC 엔벨로프를 화면에서 확인한다 (ciphertext는 볼 수 없음).
+export async function getEncryptedLicense(id: number): Promise<Record<string, unknown>> {
+  if (DEMO) return demoEncryptedLicense()
+  const token = localStorage.getItem('lh_token')
+  const res = await fetch(BASE + `/api/licenses/${id}/license`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new Error(`LIC load failed: ${res.status}`)
+  return res.json()
+}
+
 export async function downloadLicensePublicKey(licenseId: string): Promise<void> {
   if (DEMO) {
     console.info(`[demo] download public key for ${licenseId}`)
