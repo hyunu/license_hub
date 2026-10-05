@@ -208,6 +208,30 @@ export function demoCreateUser(body: { username: string; password: string; role?
   demoUsers.push({ id: seq + 3000, username: body.username, role: body.role ?? 'admin', created_at: now() })
 }
 
+export function demoUpdateUser(
+  id: number,
+  body: { username?: string; role?: string; password?: string },
+): void {
+  const u = demoUsers.find((x) => x.id === id)
+  if (!u) return
+  if (body.username) u.username = body.username
+  if (body.role) u.role = body.role
+}
+
+export function demoDeleteUser(id: number): void {
+  const i = demoUsers.findIndex((x) => x.id === id)
+  if (i >= 0) demoUsers.splice(i, 1)
+}
+
+export function demoDeleteLicense(id: number): void {
+  const i = demoLicenses.findIndex((x) => x.id === id)
+  if (i < 0) return
+  const licenseId = demoLicenses[i].license_id
+  demoLicenses.splice(i, 1)
+  const b = demoBlacklist.findIndex((x) => x.license_id === licenseId)
+  if (b >= 0) demoBlacklist.splice(b, 1)
+}
+
 export function demoAddBlacklist(licenseId: string, reason: string): void {
   demoBlacklist.unshift({ license_id: licenseId, reason, created_at: now() })
   const lic = demoLicenses.find((l) => l.license_id === licenseId)

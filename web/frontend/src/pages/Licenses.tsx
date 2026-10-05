@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, downloadEncryptedLicense, saveApplicationPrivateKey, type License } from '../api'
+import { useAuth } from '../auth'
 import { Toasts, useToasts } from '../toast'
 
 // date 입력(YYYY-MM-DD)을 그날 마지막 자정 직전(23:59:59 UTC)으로 바꾼다.
@@ -44,6 +45,8 @@ const LANGUAGES = [
 ]
 
 export function Licenses() {
+  const { user: me } = useAuth()
+  const isAdmin = me?.role === 'admin'
   const [licenses, setLicenses] = useState<License[]>([])
   const [filter, setFilter] = useState('')
   const [form, setForm] = useState(emptyForm)
@@ -150,6 +153,18 @@ export function Licenses() {
       load(filter)
     } catch (err) {
       bad(err instanceof Error ? err.message : 'failed')
+    }
+  }
+
+  // 서버에서 라이선스와 발급된 인증서·블랙리스트를 함께 삭제한다 (admin 전용).
+  const removeLicense = async (lic: License) => {
+    if (!window.confirm(`라이선스 '${lic.license_id}'를 서버에서 삭제할까요?\n발급된 인증서도 함께 지워지며 되돌릴 수 없습니다.`)) return
+    try {
+      await api.deleteLicense(lic.id)
+      ok(`라이선스 ${lic.license_id} 삭제됨`)
+      load(filter)
+    } catch (err) {
+      bad(err instanceof Error ? err.message : '삭제 실패')
     }
   }
 
@@ -289,6 +304,9 @@ export function Licenses() {
                   <button className={`btn small ${l.status === 'active' ? 'danger' : ''}`} onClick={() => toggleStatus(l)}>
                     {l.status === 'active' ? '폐기' : '복구'}
                   </button>
+                  {isAdmin && (
+                    <button className="btn small danger" onClick={() => removeLicense(l)}>삭제</button>
+                  )}
                 </td>
               </tr>
             ))}

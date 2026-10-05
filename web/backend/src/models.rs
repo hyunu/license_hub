@@ -100,6 +100,18 @@ pub struct UserInput {
     pub role: Option<String>,
 }
 
+/// 사용자 수정 요청. 비어 있는 필드는 기존 값을 유지한다.
+#[derive(Debug, Deserialize)]
+pub struct UserUpdate {
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
+    /// 비우거나 생략하면 비밀번호를 바꾸지 않는다.
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct BlacklistInput {
     pub license_id: String,

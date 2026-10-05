@@ -1,4 +1,4 @@
-import { demoAddBlacklist, demoAudit, demoBlacklist, demoCreateLicense, demoCreateUser, demoEncryptedLicense, demoIssueCertificate, demoLicenses, demoLicensesByStatus, demoPublicKey, demoRemoveBlacklist, demoSetStatus, demoStats, demoUsers } from './demo'
+import { demoAddBlacklist, demoAudit, demoBlacklist, demoCreateLicense, demoCreateUser, demoDeleteLicense, demoDeleteUser, demoEncryptedLicense, demoIssueCertificate, demoLicenses, demoLicensesByStatus, demoPublicKey, demoRemoveBlacklist, demoSetStatus, demoStats, demoUpdateUser, demoUsers } from './demo'
 
 export interface User {
   id: number
@@ -110,6 +110,21 @@ function demoRoute<T>(path: string, options: RequestInit): Promise<T> {
     demoCreateUser(body as { username: string; password: string; role?: string })
     return Promise.resolve({ ok: true } as T)
   }
+  if (basePath.startsWith('/api/users/') && method === 'PATCH') {
+    demoUpdateUser(
+      Number(basePath.split('/')[3]),
+      body as { username?: string; role?: string; password?: string },
+    )
+    return Promise.resolve({ ok: true } as T)
+  }
+  if (basePath.startsWith('/api/users/') && method === 'DELETE') {
+    demoDeleteUser(Number(basePath.split('/')[3]))
+    return Promise.resolve({ ok: true } as T)
+  }
+  if (basePath.startsWith('/api/licenses/') && method === 'DELETE') {
+    demoDeleteLicense(Number(basePath.split('/')[3]))
+    return Promise.resolve({ ok: true } as T)
+  }
 
   if (basePath === '/api/blacklist' && method === 'GET') return Promise.resolve(demoBlacklist as T)
   if (basePath === '/api/blacklist' && method === 'POST') {
@@ -193,10 +208,17 @@ export const api = {
     }>(`/api/licenses/${id}/issue`, { method: 'POST' }),
   setStatus: (id: number, status: string) =>
     request<{ ok: boolean }>(`/api/licenses/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  // 서버에서 라이선스와 발급된 인증서·블랙리스트를 함께 삭제한다 (admin 전용).
+  deleteLicense: (id: number) =>
+    request<{ ok: boolean }>(`/api/licenses/${id}`, { method: 'DELETE' }),
 
   users: () => request<User[]>('/api/users'),
   createUser: (body: { username: string; password: string; role?: string }) =>
     request<{ ok: boolean }>('/api/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateUser: (id: number, body: { username?: string; role?: string; password?: string }) =>
+    request<{ ok: boolean }>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteUser: (id: number) =>
+    request<{ ok: boolean }>(`/api/users/${id}`, { method: 'DELETE' }),
 
   blacklist: () => request<BlacklistEntry[]>('/api/blacklist'),
   addBlacklist: (body: { license_id: string; reason: string }) =>

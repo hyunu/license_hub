@@ -1,8 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, type BlacklistEntry } from '../api'
+import { useAuth } from '../auth'
 import { Toasts, useToasts } from '../toast'
 
 export function Blacklist() {
+  const { user: me } = useAuth()
+  const isAdmin = me?.role === 'admin'
   const [entries, setEntries] = useState<BlacklistEntry[]>([])
   const [licenseId, setLicenseId] = useState('')
   const [reason, setReason] = useState('')
@@ -81,7 +84,8 @@ export function Blacklist() {
                 <td className="mono">{e.license_id}</td>
                 <td>{e.reason || '—'}</td>
                 <td className="mono">{e.created_at.slice(0, 10)}</td>
-                <td><button className="btn small danger" onClick={() => remove(e.license_id)}>제거</button></td>
+                <td><button className="btn small danger" onClick={() => remove(e.license_id)} disabled={!isAdmin}
+                  title={isAdmin ? undefined : 'admin 역할만 삭제할 수 있습니다'}>제거</button></td>
               </tr>
             ))}
           </tbody>

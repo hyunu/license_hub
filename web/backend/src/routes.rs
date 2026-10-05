@@ -58,6 +58,26 @@ fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<User, ApiError> {
     user_by_token(&db, token).ok_or_else(unauthorized)
 }
 
+/// admin 역할만 통과시킨다. 서버에서 실제로 데이터를 삭제하는 작업처럼
+/// 되돌릴 수 없는 동작에 사용한다.
+fn require_admin(user: &User) -> Result<(), ApiError> {
+    if user.role == "admin" {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "admin role required" })),
+        ))
+    }
+}
+
+/// admin 역할 사용자 수를 센다. 마지막 admin 보호에 사용한다.
+fn admin_count(db: &Connection) -> rusqlite::Result<i64> {
+    db.query_row("SELECT COUNT(*) FROM users WHERE role = 'admin'", [], |r| {
+        r.get(0)
+    })
+}
+
 fn log_audit(
     state: &AppState,
     actor: &str,
@@ -541,6 +561,52 @@ pub async fn license_status(
     Ok(Json(json!({ "ok": true, "id": id, "status": status })))
 }
 
+/// 라이선스를 서버에서 삭제한다 (admin 전용).
+///
+/// 발급된 인증서와 Blacklist 항목도 함께 지운다. 폐기(revoke)와 달리
+/// 되돌릴 수 없다.
+pub async fn delete_license(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<Value>, ApiError> {
+    let user = auth_user(&state, &headers)?;
+    require_admin(&user)?;
+    let license_id: String = {
+        let db = state.db.lock().unwrap();
+        let license_id = db
+            .query_row(
+                "SELECT license_id FROM licenses WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| internal(&e.to_string()))?
+            .ok_or_else(|| not_found("license not found"))?;
+        db.execute(
+            "DELETE FROM certificates WHERE license_id = ?1",
+            params![license_id],
+        )
+        .map_err(|e| internal(&e.to_string()))?;
+        db.execute(
+            "DELETE FROM blacklist WHERE license_id = ?1",
+            params![license_id],
+        )
+        .map_err(|e| internal(&e.to_string()))?;
+        db.execute("DELETE FROM licenses WHERE id = ?1", params![id])
+            .map_err(|e| internal(&e.to_string()))?;
+        license_id
+    };
+    log_audit(
+        &state,
+        &user.username,
+        "license.delete",
+        Some(&license_id),
+        None,
+    );
+    Ok(Json(json!({ "ok": true, "license_id": license_id })))
+}
+
 pub async fn issue_certificate(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -803,6 +869,149 @@ pub async fn create_user(
     ))
 }
 
+/// 사용자 계정을 수정한다 (admin 전용).
+///
+/// 사용자명·역할·비밀번호를 바꿀 수 있고, 생략한 필드는 유지한다.
+pub async fn update_user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(body): Json<UserUpdate>,
+) -> Result<Json<Value>, ApiError> {
+    let actor = auth_user(&state, &headers)?;
+    require_admin(&actor)?;
+
+    let (current_username, current_role): (String, String) = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT username, role FROM users WHERE id = ?1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| internal(&e.to_string()))?
+        .ok_or_else(|| not_found("user not found"))?
+    };
+
+    let new_username = body
+        .username
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(&current_username)
+        .to_string();
+    let new_role = body
+        .role
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(&current_role)
+        .to_string();
+    if new_role != "admin" && new_role != "operator" {
+        return Err(bad_request("role must be admin or operator"));
+    }
+    // 마지막 admin을 operator로 강등하면 관리 권한을 잃는다.
+    if current_role == "admin" && new_role != "admin" {
+        let db = state.db.lock().unwrap();
+        let admins = admin_count(&db).map_err(|e| internal(&e.to_string()))?;
+        if admins <= 1 {
+            return Err(bad_request("cannot demote the last admin"));
+        }
+    }
+
+    // 비밀번호는 값이 있을 때만 바꾼다.
+    let new_hash = match body.password.as_deref() {
+        Some(p) if !p.is_empty() => {
+            if p.len() < 4 {
+                return Err(bad_request("password must be at least 4 chars"));
+            }
+            Some(hash_password(p).map_err(|e| internal(&e))?)
+        }
+        _ => None,
+    };
+
+    {
+        let db = state.db.lock().unwrap();
+        db.execute(
+            "UPDATE users SET username = ?2, role = ?3 WHERE id = ?1",
+            params![id, new_username, new_role],
+        )
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE") {
+                conflict("username already exists")
+            } else {
+                internal(&e.to_string())
+            }
+        })?;
+        if let Some(hash) = &new_hash {
+            db.execute(
+                "UPDATE users SET password_hash = ?2 WHERE id = ?1",
+                params![id, hash],
+            )
+            .map_err(|e| internal(&e.to_string()))?;
+            // 비밀번호가 바뀌면 기존 세션을 끊는다.
+            db.execute("DELETE FROM sessions WHERE user_id = ?1", params![id])
+                .map_err(|e| internal(&e.to_string()))?;
+        }
+    }
+    log_audit(
+        &state,
+        &actor.username,
+        "user.update",
+        Some(&new_username),
+        Some(&new_role),
+    );
+    Ok(Json(
+        json!({ "ok": true, "username": new_username, "role": new_role }),
+    ))
+}
+
+/// 사용자 계정을 서버에서 삭제한다 (admin 전용).
+pub async fn delete_user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<Value>, ApiError> {
+    let actor = auth_user(&state, &headers)?;
+    require_admin(&actor)?;
+    if actor.id == id {
+        return Err(bad_request("cannot delete your own account"));
+    }
+
+    let (username, role): (String, String) = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT username, role FROM users WHERE id = ?1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| internal(&e.to_string()))?
+        .ok_or_else(|| not_found("user not found"))?
+    };
+    {
+        let db = state.db.lock().unwrap();
+        if role == "admin" {
+            let admins = admin_count(&db).map_err(|e| internal(&e.to_string()))?;
+            if admins <= 1 {
+                return Err(bad_request("cannot delete the last admin"));
+            }
+        }
+        db.execute("DELETE FROM sessions WHERE user_id = ?1", params![id])
+            .map_err(|e| internal(&e.to_string()))?;
+        db.execute("DELETE FROM users WHERE id = ?1", params![id])
+            .map_err(|e| internal(&e.to_string()))?;
+    }
+    log_audit(
+        &state,
+        &actor.username,
+        "user.delete",
+        Some(&username),
+        Some(&role),
+    );
+    Ok(Json(json!({ "ok": true, "username": username })))
+}
+
 // ---------------- Blacklist ----------------
 
 pub async fn list_blacklist(
@@ -867,6 +1076,7 @@ pub async fn remove_blacklist(
     Path(license_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let user = auth_user(&state, &headers)?;
+    require_admin(&user)?;
     {
         let db = state.db.lock().unwrap();
         db.execute(

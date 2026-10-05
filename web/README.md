@@ -130,10 +130,12 @@ GitHub 동기화 탭은 같은 데이터를 GitHub 저장소에 배포하는 채
 | GET | `/api/licenses` | 라이선스 목록 |
 | POST | `/api/licenses` | 라이선스 생성 |
 | POST | `/api/licenses/{id}/issue` | 인증서 발급 (Core 서명) |
-| GET | `/api/licenses/{id}/download` | 인증서 JSON 다운로드 |
+| GET | `/api/licenses/{id}/license/download` | 암호화 라이선스(.lic.json) 다운로드 |
 | POST | `/api/licenses/{id}/status` | 상태 변경 (active/revoked/blacklisted) |
+| DELETE | `/api/licenses/{id}` | 라이선스 삭제 (admin, 인증서·블랙리스트 포함) |
 | GET/POST | `/api/users` | 사용자 목록/추가 |
-| GET/POST/DELETE | `/api/blacklist[/{id}]` | Blacklist 관리 |
+| PATCH/DELETE | `/api/users/{id}` | 사용자 수정/삭제 (admin) |
+| GET/POST/DELETE | `/api/blacklist[/{id}]` | Blacklist 관리 (삭제는 admin) |
 | GET | `/api/audit` | 감사 로그 |
 | POST | `/api/verify` | L2 서버 검증 (approved/rejected) |
 | POST | `/api/sync/*` | GitHub Repository 동기화 |

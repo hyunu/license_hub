@@ -97,8 +97,16 @@ fn main() {
         )
         .route("/api/licenses/{id}/status", post(routes::license_status))
         .route(
+            "/api/licenses/{id}",
+            axum::routing::delete(routes::delete_license),
+        )
+        .route(
             "/api/users",
             get(routes::list_users).post(routes::create_user),
+        )
+        .route(
+            "/api/users/{id}",
+            axum::routing::patch(routes::update_user).delete(routes::delete_user),
         )
         .route(
             "/api/blacklist",
