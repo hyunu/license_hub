@@ -79,10 +79,6 @@ fn main() {
             "/api/certificates/{license_id}/public-key",
             get(routes::certificate_public_key),
         )
-        .route(
-            "/api/certificates/{license_id}/public-key/download",
-            get(routes::download_certificate_public_key),
-        )
         .route("/api/verify", post(routes::verify))
         .route("/api/claim/{license_id}", get(routes::claim_certificate))
         .route("/api/client/blacklist", get(routes::client_blacklist))
@@ -92,20 +88,12 @@ fn main() {
         )
         .route("/api/licenses/{id}/issue", post(routes::issue_certificate))
         .route(
-            "/api/licenses/{id}/download",
-            get(routes::download_certificate),
-        )
-        .route(
             "/api/licenses/{id}/license",
             get(routes::get_encrypted_license),
         )
         .route(
             "/api/licenses/{id}/license/download",
             get(routes::download_encrypted_license),
-        )
-        .route(
-            "/api/licenses/{id}/application-public-key/download",
-            get(routes::download_application_public_key),
         )
         .route("/api/licenses/{id}/status", post(routes::license_status))
         .route(

@@ -100,9 +100,6 @@ function demoRoute<T>(path: string, options: RequestInit): Promise<T> {
   if (basePath.startsWith('/api/licenses/') && basePath.endsWith('/license')) {
     return Promise.resolve(demoEncryptedLicense() as T)
   }
-  if (basePath.startsWith('/api/licenses/') && basePath.endsWith('/application-public-key/download')) {
-    return Promise.resolve(undefined as T)
-  }
   if (basePath.startsWith('/api/licenses/') && basePath.endsWith('/status')) {
     demoSetStatus(Number(basePath.split('/')[3]), String(body?.status ?? 'active'))
     return Promise.resolve({ ok: true } as T)
@@ -216,42 +213,6 @@ export const api = {
   syncCertificates: () => request<{ ok: boolean; pushed?: number }>('/api/sync/certificates', { method: 'POST' }),
 }
 
-export async function downloadCertificate(id: number, filename: string): Promise<void> {
-  if (DEMO) {
-    console.info(`[demo] download certificate for license #${id} -> ${filename}`)
-    return
-  }
-  const token = localStorage.getItem('lh_token')
-  const res = await fetch(BASE + `/api/licenses/${id}/download`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (!res.ok) throw new Error(`download failed: ${res.status}`)
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-// 라이선스의 최신 인증서 JSON을 조회한다 (다운로드 경로 재사용).
-
-export async function getCertificate(id: number): Promise<Record<string, unknown>> {
-  if (DEMO) return demoIssueCertificate(id).certificate
-  const token = localStorage.getItem('lh_token')
-  const res = await fetch(BASE + `/api/licenses/${id}/download`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (!res.ok) throw new Error(`certificate load failed: ${res.status}`)
-  return res.json()
-}
-
-// Application 공개키를 내려받는다. 라이선스를 암호화할 때 쓰인다.
-export async function downloadApplicationPublicKey(id: number, licenseId: string): Promise<void> {
-  await downloadPem(id, 'application-public-key', `${licenseId}-application-public-key.pem`)
-}
-
 // 생성 시점에 서버가 돌려준 Application 개인키를 파일로 저장한다.
 // 서버는 이 키를 저장하지 않으므로 이 시점에 받지 않으면 다시 받을 수 없다.
 export function saveApplicationPrivateKey(licenseId: string, privatePem: string): void {
@@ -260,25 +221,6 @@ export function saveApplicationPrivateKey(licenseId: string, privatePem: string)
 
 function downloadText(filename: string, content: string): void {
   const url = URL.createObjectURL(new Blob([content], { type: 'application/x-pem-file' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-async function downloadPem(id: number, kind: string, filename: string): Promise<void> {
-  if (DEMO) {
-    console.info(`[demo] download ${kind} for license #${id} -> ${filename}`)
-    return
-  }
-  const token = localStorage.getItem('lh_token')
-  const res = await fetch(BASE + `/api/licenses/${id}/${kind}/download`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (!res.ok) throw new Error(`download failed: ${res.status}`)
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = filename
@@ -303,28 +245,6 @@ export async function downloadEncryptedLicense(id: number, licenseId: string): P
   const a = document.createElement('a')
   a.href = url
   a.download = `${licenseId}.lic.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-// 라이선스 검증에 쓰이는 서명 공개키(.pem) 다운로드. 발급 시 이력 DB에 저장된
-// 값을 반환하므로 서명 키가 교체되어도 해당 라이선스의 공개키를 받을 수 있다.
-export async function downloadLicensePublicKey(licenseId: string): Promise<void> {
-  if (DEMO) {
-    console.info(`[demo] download public key for ${licenseId}`)
-    return
-  }
-  const token = localStorage.getItem('lh_token')
-  const res = await fetch(
-    BASE + `/api/certificates/${encodeURIComponent(licenseId)}/public-key/download`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-  )
-  if (!res.ok) throw new Error(`public key download failed: ${res.status}`)
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${licenseId}-public-key.pem`
   a.click()
   URL.revokeObjectURL(url)
 }

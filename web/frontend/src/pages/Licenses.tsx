@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, downloadApplicationPublicKey, downloadCertificate, downloadEncryptedLicense, downloadLicensePublicKey, saveApplicationPrivateKey, type License } from '../api'
+import { api, downloadEncryptedLicense, saveApplicationPrivateKey, type License } from '../api'
 import { Toasts, useToasts } from '../toast'
 
 // date 입력(YYYY-MM-DD)을 그날 마지막 자정 직전(23:59:59 UTC)으로 바꾼다.
@@ -129,15 +129,6 @@ export function Licenses() {
     }
   }
 
-  const downloadAppPublicKey = async (lic: License) => {
-    try {
-      await downloadApplicationPublicKey(lic.id, lic.license_id)
-      ok(`공개키 다운로드됨 — ${lic.license_id}-application-public-key.pem`)
-    } catch (err) {
-      bad(err instanceof Error ? err.message : '공개키 다운로드 실패')
-    }
-  }
-
 // 최종 산출물인 암호화된 라이선스 파일을 내려받는다.
   const downloadLic = async (lic: License) => {
     if (!lic.encrypted_license) {
@@ -149,28 +140,6 @@ export function Licenses() {
       ok(`암호화 파일 다운로드됨 — ${lic.license_id}.lic.json`)
     } catch (err) {
       bad(err instanceof Error ? err.message : '암호화 파일 다운로드 실패')
-    }
-  }
-
-  const downloadCert = async (lic: License) => {
-    if (lic.certificates === 0) {
-      bad(`'${lic.license_id}'에 아직 발급된 인증서가 없습니다 — 먼저 발급하세요`)
-      return
-    }
-    try {
-      await downloadCertificate(lic.id, `${lic.license_id}.json`)
-      ok(`인증서 다운로드됨 — ${lic.license_id}.json`)
-    } catch (err) {
-      bad(err instanceof Error ? err.message : '인증서 다운로드 실패')
-    }
-  }
-
-  const downloadKey = async (lic: License) => {
-    try {
-      await downloadLicensePublicKey(lic.license_id)
-      ok(`서명키 다운로드됨 — ${lic.license_id}-public-key.pem`)
-    } catch (err) {
-      bad(err instanceof Error ? err.message : '서명키 다운로드 실패')
     }
   }
 
@@ -282,12 +251,12 @@ export function Licenses() {
             <tr>
               <th>License</th><th>제품 / 버전</th><th>등급</th><th>언어</th>
               <th>Application ID</th><th>소유자</th>
-              <th>만료</th><th>상태</th><th>암호화</th><th>키</th><th>작업</th>
+              <th>만료</th><th>상태</th><th>암호화</th><th>작업</th>
             </tr>
           </thead>
           <tbody>
             {licenses.length === 0 && (
-              <tr><td colSpan={11} className="muted small">등록된 라이선스가 없습니다 — '새 라이선스'로 추가하세요</td></tr>
+              <tr><td colSpan={10} className="muted small">등록된 라이선스가 없습니다 — '새 라이선스'로 추가하세요</td></tr>
             )}
             {licenses.map((l) => (
               <tr key={l.id}>
@@ -311,20 +280,12 @@ export function Licenses() {
                   )}
                 </td>
                 <td className="actions">
-                  <button className="btn small" onClick={() => downloadAppPublicKey(l)}
-                    title="라이선스를 암호화할 때 쓰이는 공개키(.pem)">공개키</button>
-                  <button className="btn small" onClick={() => downloadKey(l)}
-                    title="라이선스 검증에 쓰이는 서명 공개키(.pem)">서명키</button>
-                </td>
-                <td className="actions">
                   <button className="btn small primary" onClick={() => issue(l)}
                     title="암호화된 라이선스 파일을 만듭니다">발급</button>
                   <button className="btn small" onClick={() => downloadLic(l)} disabled={!l.encrypted_license}
                     title={l.encrypted_license
                       ? `${l.license_id}.lic.json 내려받기`
                       : '먼저 발급하세요'}>암호화 파일</button>
-                  <button className="btn small" onClick={() => downloadCert(l)} disabled={l.certificates === 0}
-                    title={l.certificates === 0 ? '먼저 발급하세요' : `${l.license_id}.json 내려받기`}>인증서</button>
                   <button className={`btn small ${l.status === 'active' ? 'danger' : ''}`} onClick={() => toggleStatus(l)}>
                     {l.status === 'active' ? '폐기' : '복구'}
                   </button>

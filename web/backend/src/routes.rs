@@ -235,26 +235,6 @@ pub async fn certificate_public_key(
     })))
 }
 
-/// 특정 라이선스의 최신 인증서가 사용한 공개키를 .pem 파일로 내려받는다.
-pub async fn download_certificate_public_key(
-    State(state): State<Arc<AppState>>,
-    Path(license_id): Path<String>,
-) -> Result<Response, ApiError> {
-    let (_, public_key) = license_public_key(&state, &license_id)?;
-    let mut hdrs = HeaderMap::new();
-    hdrs.insert(
-        header::CONTENT_TYPE,
-        "application/x-pem-file".parse().unwrap(),
-    );
-    hdrs.insert(
-        header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{}-public-key.pem\"", license_id)
-            .parse()
-            .unwrap(),
-    );
-    Ok((hdrs, public_key).into_response())
-}
-
 // ---------------- Licenses ----------------
 
 #[derive(Debug, Deserialize)]
@@ -504,44 +484,6 @@ fn generate_application_keypair() -> Result<ApplicationKeyPair, String> {
     })
 }
 
-/// Application 공개키(Z_Pub)를 내려받는다.
-///
-/// 라이선스를 암호화할 때 쓰이는 키이므로 Application 배포물에 포함된다.
-pub async fn download_application_public_key(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Path(id): Path<i64>,
-) -> Result<Response, ApiError> {
-    auth_user(&state, &headers)?;
-    let (license_id, public_pem): (String, String) = {
-        let db = state.db.lock().unwrap();
-        db.query_row(
-            "SELECT license_id, application_public_key FROM licenses
-             WHERE id = ?1 AND application_public_key IS NOT NULL",
-            params![id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .optional()
-        .map_err(|e| internal(&e.to_string()))?
-        .ok_or_else(|| not_found("no application public key registered"))?
-    };
-    let mut hdrs = HeaderMap::new();
-    hdrs.insert(
-        header::CONTENT_TYPE,
-        "application/x-pem-file".parse().unwrap(),
-    );
-    hdrs.insert(
-        header::CONTENT_DISPOSITION,
-        format!(
-            "attachment; filename=\"{}-application-public-key.pem\"",
-            license_id
-        )
-        .parse()
-        .unwrap(),
-    );
-    Ok((hdrs, public_pem).into_response())
-}
-
 /// P를 암호화할 Application 공개키(AK2 = Z_Pub)를 파싱한다.
 ///
 /// 이미지의 AK2에 해당한다. P 본문은 이 키로만 암호화되므로, 잘못된
@@ -731,32 +673,6 @@ pub async fn issue_certificate(
         "application_key_generated": generated_private_key.is_some(),
         "application_private_key": generated_private_key,
     })))
-}
-
-pub async fn download_certificate(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Path(id): Path<i64>,
-) -> Result<Response, ApiError> {
-    auth_user(&state, &headers)?;
-    let (license_id, cert_json): (String, String) = {
-        let db = state.db.lock().unwrap();
-        db.query_row(
-            "SELECT license_id, cert_json FROM certificates WHERE license_id = (SELECT license_id FROM licenses WHERE id = ?1) ORDER BY id DESC LIMIT 1",
-            params![id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .map_err(|_| not_found("no certificate issued"))?
-    };
-    let mut hdrs = HeaderMap::new();
-    hdrs.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
-    hdrs.insert(
-        header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{}.json\"", license_id)
-            .parse()
-            .unwrap(),
-    );
-    Ok((hdrs, cert_json).into_response())
 }
 
 /// 암호화된 LIC(EncryptedLicense 엔벨로프)를 내려받는다.
