@@ -51,6 +51,43 @@ int32_t status = lh_verify_certificate(cert, cert_len, pub, 32, ctx, ctx_len, &c
 if (status == 0 && code == LH_VALID) { /* 활성화 */ }
 ```
 
+## L2 서버 검증 (온라인 조회)
+
+L2/L3 인증서는 런타임에 서버 상태를 확인해야 한다. 서버 주소는 인증서의
+`server.verification_url`에 서명되어 있고, 그 주소로 `license_id`를 조회한다.
+
+```text
+POST {verification_url}   {"license_id":"<LICENSE-ID>"}
+응답 200: {"status":"approved"} 또는 {"status":"rejected"}
+```
+
+C에서는 `lh_fetch_server_status`가 이 조회를 수행한다.
+
+```c
+uint32_t srv;
+int32_t rc = lh_fetch_server_status(url, url_len, license_id, id_len, &srv);
+if (rc == 0) {
+    /* srv == LH_SERVER_STATUS_APPROVED / REJECTED */
+    /* context JSON 의 server_status 를 "approved"/"rejected" 로 채운다 */
+}
+```
+
+Rust에서는 `online` 기능의 헬퍼를 쓴다. 이 기능은 기본으로 꺼져 있으므로
+`licensehub-core = { path = "...", features = ["online"] }` 로 켠다. C 배포
+라이브러리는 `core/build.sh` 가 `--features online` 으로 빌드한다.
+
+```rust
+use licensehub_core::online;
+
+// 인증서의 verification_url 과 license_id 로 조회
+let status = online::fetch_server_status(url, license_id)?;
+
+// 복호화 → 조회 → 검증까지 한 번에
+online::decrypt_verify_trusted_license_online(&envelope, &z_pri, &context)?;
+```
+
+네트워크 의존 없이 Core만 쓰려면 `online` 을 켜지 않는다(기본값).
+
 ## Rust 사용
 
 Rust 응용 SW는 `licensehub_core` 크레이트를 경로 의존성으로 사용한다.

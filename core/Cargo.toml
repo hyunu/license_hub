@@ -8,6 +8,12 @@ license = "MIT"
 [lib]
 crate-type = ["rlib", "cdylib", "staticlib"]
 
+[features]
+# L2 서버 검증(verification_url 조회) 온라인 클라이언트. 기본은 꺼짐이라
+# Core 자체는 네트워크 의존이 없다. 필요하면 --features online 로 켠다.
+default = []
+online = ["dep:ureq"]
+
 [dependencies]
 aes-gcm = "0.10"
 base64 = "0.22"
@@ -21,3 +27,18 @@ sha2 = "0.10"
 thiserror = "2"
 time = { version = "0.3", features = ["formatting", "parsing", "serde", "macros"] }
 zeroize = "1"
+
+# online 기능용 HTTP 클라이언트. macOS는 rustls/ring 로 만든 cdylib 이
+# 링커(ld)에서 "mis-aligned LINKEDIT string pool" 오류를 일으키므로 OS TLS
+# (native-tls)를 쓰고, 그 외 플랫폼은 OpenSSL 의존이 없는 rustls 를 쓴다.
+[target.'cfg(target_os = "macos")'.dependencies]
+ureq = { version = "2", optional = true, default-features = false, features = [
+    "json",
+    "native-tls",
+] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+ureq = { version = "2", optional = true, default-features = false, features = [
+    "json",
+    "tls",
+] }

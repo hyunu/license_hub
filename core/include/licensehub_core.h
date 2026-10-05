@@ -85,9 +85,28 @@ int32_t lh_application_id(
     size_t out_len
 );
 
+/* L2 server verification query. POSTs {"license_id": ...} to verification_url
+ * (the address signed into the certificate's server field) and maps the
+ * response to a server status. Returns 0 when the query succeeded
+ * (result_code = LH_SERVER_STATUS_APPROVED/REJECTED), -1 for invalid
+ * arguments, or -2 for network/response errors. Put the resulting status into
+ * the verification context ("approved"/"rejected") before verifying. */
+int32_t lh_fetch_server_status(
+    const uint8_t *url,
+    size_t url_len,
+    const uint8_t *license_id,
+    size_t license_id_len,
+    uint32_t *result_code
+);
+
 #ifdef __cplusplus
 }
 #endif
+
+enum lh_server_status {
+    LH_SERVER_STATUS_APPROVED = 0,
+    LH_SERVER_STATUS_REJECTED = 1
+};
 
 enum lh_verification_code {
     LH_VALID = 0,

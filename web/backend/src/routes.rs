@@ -1203,6 +1203,20 @@ pub async fn verify(
             json!({ "license_id": body.license_id, "status": "rejected", "reason": "unknown_license" }),
         );
     };
+    // Blacklist는 license 상태와 별개로 직접 확인한다. 둘 중 하나라도
+    // 걸리면 거부한다.
+    let blacklisted: bool = db
+        .query_row(
+            "SELECT 1 FROM blacklist WHERE license_id = ?1",
+            params![body.license_id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    if blacklisted {
+        return Json(
+            json!({ "license_id": body.license_id, "status": "rejected", "reason": "blacklisted" }),
+        );
+    }
     if status != "active" {
         return Json(
             json!({ "license_id": body.license_id, "status": "rejected", "reason": status }),

@@ -20,6 +20,8 @@ use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 pub mod envelope;
+#[cfg(feature = "online")]
+pub mod online;
 pub mod trusted;
 
 /// 현재 프로세스(호스트 앱)의 실행 파일 이름을 반환한다.

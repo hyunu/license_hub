@@ -21,7 +21,7 @@ DIST_DIR="$CORE_DIR/dist/${PLATFORM}-${ARCH}"
 LIB_DIR="$DIST_DIR/lib"
 INCLUDE_DIR="$DIST_DIR/include"
 
-cargo build --manifest-path "$CORE_DIR/Cargo.toml" --release
+cargo build --manifest-path "$CORE_DIR/Cargo.toml" --release --features online
 
 rm -rf "$DIST_DIR"
 mkdir -p "$LIB_DIR" "$INCLUDE_DIR"

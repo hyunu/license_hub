@@ -20,7 +20,7 @@ jobs:
       - name: fmt check
         run: cargo fmt -- --check
       - name: test
-        run: cargo test
+        run: cargo test --all-features
       - name: clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
