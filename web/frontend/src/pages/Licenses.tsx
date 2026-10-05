@@ -208,51 +208,57 @@ export function Licenses() {
 
         {showForm && (
           <form className="form-strip" onSubmit={create}>
-            <div className="form-grid">
-              <label className="f">License ID (비우면 자동)
-                <input placeholder="자동 생성" value={form.license_id} onChange={(e) => set('license_id', e.target.value)} />
-              </label>
-              <label className="f"><span className="lbl">제품 <span className="req">*</span></span>
-                <input value={form.product} onChange={(e) => set('product', e.target.value)} placeholder="제품명" required />
-              </label>
-              <label className="f"><span className="lbl">버전 <span className="req">*</span></span>
-                <input value={form.version} onChange={(e) => set('version', e.target.value)} required />
-              </label>
-              <label className="f">등급
-                <select value={form.level} onChange={(e) => set('level', e.target.value)}>
-                  <option value="1">1 — Core (오프라인)</option>
-                  <option value="2">2 — Secure (서버)</option>
-                  <option value="3">3 — Device-Bound</option>
-                </select>
-              </label>
-              <label className="f"><span className="lbl">소유자 (Owner) <span className="req">*</span></span>
-                <input value={form.holder} onChange={(e) => set('holder', e.target.value)} required />
-              </label>
-              <label className="f">Target Language
-                <select value={form.target_language} onChange={(e) => set('target_language', e.target.value)}>
-                  {LANGUAGES.map((l) => (
-                    <option key={l.value} value={l.value}>{l.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="f wide"><span className="lbl">Application 공개키 (PEM)</span>
-                <textarea
-                  rows={3}
-                  value={form.application_public_key}
-                  onChange={(e) => set('application_public_key', e.target.value)}
-                  placeholder={'-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----'}
-                />
-              </label>
-              <label className="f">Device ID (L3)
-                <input value={form.device_id} onChange={(e) => set('device_id', e.target.value)} />
-              </label>
-              <label className="f">만료일
-                <input type="datetime-local" value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
-              </label>
-              <label className="f wide">메타정보
-                <input value={form.metadata} onChange={(e) => set('metadata', e.target.value)} placeholder="예: 고객사명, 계약번호" />
-              </label>
+            <div className="form-cols">
+              <div className="form-grid">
+                <label className="f">License ID (비우면 자동)
+                  <input placeholder="자동 생성" value={form.license_id} onChange={(e) => set('license_id', e.target.value)} />
+                </label>
+                <label className="f"><span className="lbl">제품 <span className="req">*</span></span>
+                  <input value={form.product} onChange={(e) => set('product', e.target.value)} placeholder="제품명" required />
+                </label>
+                <label className="f"><span className="lbl">버전 <span className="req">*</span></span>
+                  <input value={form.version} onChange={(e) => set('version', e.target.value)} required />
+                </label>
+                <label className="f"><span className="lbl">소유자 <span className="req">*</span></span>
+                  <input value={form.holder} onChange={(e) => set('holder', e.target.value)} required />
+                </label>
+                <label className="f">등급
+                  <select value={form.level} onChange={(e) => set('level', e.target.value)}>
+                    <option value="1">1 — Core (오프라인)</option>
+                    <option value="2">2 — Secure (서버)</option>
+                    <option value="3">3 — Device-Bound</option>
+                  </select>
+                </label>
+                <label className="f">언어
+                  <select value={form.target_language} onChange={(e) => set('target_language', e.target.value)}>
+                    {LANGUAGES.map((l) => (
+                      <option key={l.value} value={l.value}>{l.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="f">만료일
+                  <input type="datetime-local" value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
+                </label>
+                <label className="f">Device ID (등급 3)
+                  <input value={form.device_id} onChange={(e) => set('device_id', e.target.value)} />
+                </label>
+                <label className="f wide">메타정보
+                  <input value={form.metadata} onChange={(e) => set('metadata', e.target.value)} placeholder="예: 고객사명, 계약번호" />
+                </label>
+              </div>
+
+              <div className="side">
+                <label className="f"><span className="lbl">Application 공개키 (PEM)</span>
+                  <textarea
+                    value={form.application_public_key}
+                    onChange={(e) => set('application_public_key', e.target.value)}
+                    placeholder={'-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----'}
+                  />
+                </label>
+                <p className="hint">선택 입력. 입력하면 라이선스를 이 공개키로 암호화해 내려줍니다. 비우면 암호화하지 않습니다.</p>
+              </div>
             </div>
+
             <div className="form-actions">
               <span className="sec-note"><span className="req">*</span> 필수</span>
               <button className="btn primary" disabled={busy}>{busy ? '생성 중…' : '생성'}</button>
