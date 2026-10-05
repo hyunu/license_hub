@@ -139,7 +139,7 @@ Developer / Administrator
 ### 5.2 LicenseGuard (배포형 검증 모듈)
 
 응용 SW에 포함되는 검증 모듈로, Core의 검증 기능만 사용한다.
-현재 C/C++/C#/Python/Node.js 바인딩이 `bindings/`에 구현되어 있다(7장).
+현재 C/Rust 바인딩이 `bindings/`와 `core/` 크레이트에 구현되어 있다(7장).
 
 - 인증서 로드 및 캐시
 - 서명·Metadata·만료 검증
@@ -230,7 +230,7 @@ Core는 같은 Rust 라이브러리가 두 곳에서 각각의 책임만 사용�
 │  사용 맥락 2: 검증 (응용 SW 내 LicenseGuard)                  │
 │                                                              │
 │   Rust 계열     ──▶ verify()            ──▶ Ok / Err         │
-│   C/C#/Python 등 ──▶ lh_verify_certificate() (C ABI) ──▶ 코드 │
+│   C 계열         ──▶ lh_verify_certificate() (C ABI) ──▶ 코드 │
 │                                                              │
 │   ※ Public Key만 필요. 배포물에 포함 가능. 발급 기능 없음.    │
 └──────────────────────────────────────────────────────────────┘
@@ -290,10 +290,10 @@ if result.is_ok() {
 }
 ```
 
-### 6.4 검증 경로 (C ABI - C/C#/Python/Go 등)
+### 6.4 검증 경로 (C ABI - C 등)
 
 ```text
-LicenseGuard (C/C#/Python/Go...)
+LicenseGuard (C...)
       │  인증서 JSON 바이트 / 공개키 32B / Context JSON
       v
 lh_verify_certificate(cert, cert_len, pub, pub_len, ctx, ctx_len, &result_code)
@@ -338,11 +338,11 @@ GitHub       ──▶ 인증서·공개키 배포 채널 (신뢰 근거가 아�
 
 ### 7.1 개요
 
-Core의 C ABI(`lh_verify_certificate`)를 각 언어에서 호출할 수 있도록 만든
-배포용 검증 라이브러리다. `bindings/` 아래에 구현되어 있다.
+Core의 C ABI(`lh_verify_certificate`)를 C에서 호출할 수 있도록 만든 배포용
+검증 라이브러리다. Rust는 `core/` 크레이트를 직접 경로 의존성으로 사용한다.
 
 - 검증 기능만 포함: 발급·개인키·GitHub 자격증명 없음
-- 모든 언어가 동일한 픽스처(`bindings/testdata`)로 검증
+- 두 바인딩 모두 동일한 픽스처(`bindings/testdata`)로 검증
 - 고정 테스트 키로 만든 L1/L2/L3 인증서를 공용으로 사용
 
 ### 7.2 지원 언어 및 진입점
@@ -351,10 +351,6 @@ Core의 C ABI(`lh_verify_certificate`)를 각 언어에서 호출할 수 있도�
 |---|---|---|---|
 | Rust | `core` 크레이트 자체 | `verify()` | `cargo test` |
 | C | `bindings/c` | `lh_verify_certificate` | `./build.sh` |
-| C++ | `bindings/cpp` | `LicenseGuard::verify` | `./build.sh` |
-| C# | `bindings/csharp` | `LicenseGuard.Verify` | `./run.sh` |
-| Python | `bindings/python` | `LicenseGuard().verify` | `python3 verify_all.py` |
-| Node.js | `bindings/nodejs` | `LicenseGuard.verify` | `./run.sh` |
 
 ### 7.3 공용 테스트 픽스처
 
@@ -377,10 +373,7 @@ Core의 C ABI(`lh_verify_certificate`)를 각 언어에서 호출할 수 있도�
 
 ```text
 distribute/
-├── cpp/        헤더 + 정적/공유 라이브러리
-├── csharp/     LicenseHub.LicenseGuard.nupkg
-├── python/     licensehub_licenseguard wheel
-├── nodejs/     licensehub-node tgz
+├── c/          헤더 + 정적/공유 라이브러리 + 예제
 └── rust/       배포 안내
 ```
 
@@ -473,11 +466,7 @@ Admin이 License 폐기
 │   ├── 인증서 발급 예제 (examples/issue_certificate.rs)
 │   └── 픽스처 생성 예제 (examples/generate_bindings_fixtures.rs)
 ├── 배포용 검증 라이브러리 (bindings/)
-│   ├── C (verify_all.c)
-│   ├── C++ (licenseguard.hpp)
-│   ├── C# (LicenseGuard.cs)
-│   ├── Python (licenseguard.py)
-│   └── Node.js (licenseguard.js)
+│   └── C (verify_all.c)
 ├── 요구사항 문서 (docs/REQUIREMENTS.md)
 ├── Core 설계 문서 (docs/CORE_DESIGN.md)
 └── 아키텍처 문서 (본 문서)
@@ -498,7 +487,7 @@ Admin이 License 폐기
 ```text
 완료
 ├── Core 발급·검증·C ABI
-└── 배포용 검증 라이브러리 (C/C++/C#/Python/Node.js)
+└── 배포용 검증 라이브러리 (C/Rust)
 
 계획
 ├── Phase 1  Core Schema·Canonicalization·Test Vector 안정화

@@ -26,10 +26,9 @@ Core는 Rust로 구현한다.
 Rust를 사용하는 이유:
 
 - 메모리 안전성이 필요한 인증·검증 로직에 적합하다.
-- C/C++보다 런타임 메모리 오류 위험이 낮다.
+- C보다 런타임 메모리 오류 위험이 낮다.
 - Windows, Linux, macOS용 네이티브 라이브러리로 빌드할 수 있다.
-- C ABI와 WebAssembly를 제공할 수 있다.
-- C#, Java, Python, Go, Swift 등에서 연동할 수 있다.
+- C ABI를 제공할 수 있다.
 
 ### 3.2 모듈 구성
 
@@ -386,23 +385,15 @@ FFI 원칙:
 
 1. Rust 내부 API
 2. C ABI
-3. C/C++ 헤더
-4. C# P/Invoke Wrapper
-5. Python Wrapper
-6. Java/Kotlin JNI 또는 JNA Wrapper
-7. Go cgo Wrapper
-8. Swift 및 WebAssembly 지원
+3. C 헤더
 
 구현 현황:
 
 - 완료: Rust(`verify`/`verify_trusted`), C ABI(`lh_verify_certificate`,
-  `lh_verify_trusted_certificate`, `lh_decrypt_verify_trusted_license`), C/C++ 헤더,
-  C#, Python, Node.js — `bindings/` 참고
+  `lh_verify_trusted_certificate`, `lh_decrypt_verify_trusted_license`),
+  C 헤더 — `bindings/c` 참고
 - 완료: K1 내장 신뢰 공개키(분산 저장·zeroize), 호스트 바인딩 검증
   (`product_id`/`executable_name`/모듈 이름)
-- 계획: Java/Kotlin, Go, Swift, WebAssembly
-
-Node.js는 `koffi` FFI를 통해 동일한 C ABI를 호출한다.
 
 ## 10. 보안 요구사항
 
@@ -447,7 +438,7 @@ test-vectors/
 └── device-mismatch.json
 ```
 
-Rust에서 발급한 인증서를 C#, Python, Java 및 Go 검증기가 동일하게 검증해야 한다.
+Rust에서 발급한 인증서를 C 검증기가 동일하게 검증해야 한다.
 
 ### 11.3 보안 테스트
 
@@ -488,8 +479,7 @@ Rust에서 발급한 인증서를 C#, Python, Java 및 Go 검증기가 동일하
 ### Phase 4: FFI 및 Wrapper
 
 - C ABI 구현
-- C/C++ 헤더 배포
-- C# 및 Python Wrapper 구현
+- C 헤더 배포
 - 언어 간 Test Vector 검증
 
 ## 13. 확정이 필요한 사항

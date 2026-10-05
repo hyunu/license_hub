@@ -11,13 +11,9 @@
 | 언어 | 구현 | 실행 방법 |
 |---|---|---|
 | C | `c/verify_all.c` | `cd c && ./build.sh` |
-| C++ | `cpp/licenseguard.hpp` | `cd cpp && ./build.sh` |
-| C# | `csharp/LicenseGuard.cs` | `cd csharp && ./run.sh` |
-| Python | `python/licenseguard.py` | `cd python && python3 verify_all.py` |
-| Node.js | `nodejs/licenseguard.js` | `cd nodejs && ./run.sh` |
-| Rust | `core/` 크레이트 자체 | `cargo test` (core) |
+| Rust | `core/` 크레이트 자체 | `cd core && cargo test` |
 
-모든 바인딩은 동일한 픽스처로 다음을 검증한다.
+두 바인딩은 동일한 픽스처로 다음을 검증한다.
 
 - L1 유효 인증서 → VALID
 - L2 유효 인증서 → VALID
@@ -43,6 +39,19 @@ core/dist/macos-arm64/
     └── liblicensehub_core.a
 ```
 
+## C 사용
+
+`core/dist/<os>-<arch>/include/licensehub_core.h` 를 include 하고
+네이티브 라이브러리를 링크한다.
+
+```c
+#include "licensehub_core.h"
+
+uint32_t code;
+int32_t status = lh_verify_certificate(cert, cert_len, pub, 32, ctx, ctx_len, &code);
+if (status == 0 && code == LH_VALID) { /* 활성화 */ }
+```
+
 ## Rust 사용
 
 Rust 응용 SW는 `licensehub_core` 크레이트를 경로 의존성으로 사용한다.
@@ -57,72 +66,6 @@ let result = verify(&cert, &public_key, &VerificationContext::default());
 if result.is_ok() {
     // 핵심 기능 활성화
 }
-```
-
-## C 사용
-
-`core/dist/<os>-<arch>/include/licensehub_core.h` 를 include 하고
-네이티브 라이브러리를 링크한다.
-
-```c
-#include "licensehub_core.h"
-
-uint32_t code;
-int32_t status = lh_verify_certificate(cert, cert_len, pub, 32, ctx, ctx_len, &code);
-if (status == 0 && code == LH_VALID) { /* 활성화 */ }
-
-/* 응용SW 핵심로직 방어(X): 코어 내장 K1 공개키로 검증 (공개키 인자 불필요) */
-int32_t tstatus = lh_verify_trusted_certificate(cert, cert_len, ctx, ctx_len, &code);
-
-/* 제품 LIC 경로: AK1로 복호화하고 X 내부 LK2로 서명·Payload 검증 */
-int32_t lstatus = lh_decrypt_verify_trusted_license(lic, lic_len, ak1, 32,
-                                                    ctx, ctx_len, &code);
-```
-
-## C++ 사용
-
-헤더 전용 래퍼 `cpp/licenseguard.hpp` 를 include 한다.
-
-```cpp
-#include "licenseguard.hpp"
-
-auto result = licensehub::LicenseGuard::verify(cert_bytes, pub_bytes, context_json);
-if (result.valid()) { /* 활성화 */ }
-```
-
-## C# 사용
-
-`csharp/LicenseGuard.cs` 의 `LicenseGuard.Verify` 를 호출한다.
-`run.sh` 가 네이티브 라이브러리 경로(`DYLD_LIBRARY_PATH`/`LD_LIBRARY_PATH`)를
-설정하고 실행한다.
-
-```csharp
-var result = LicenseHub.LicenseGuard.Verify(certBytes, pubKeyBytes, ctxBytes);
-if (result.Valid) { /* 활성화 */ }
-```
-
-## Python 사용
-
-`python/licenseguard.py` 의 `LicenseGuard` 클래스를 사용한다.
-기본 경로에서 네이티브 라이브러리를 자동으로 찾는다.
-
-```python
-from licenseguard import LicenseGuard
-
-result = LicenseGuard().verify(cert_bytes, pub_bytes, ctx_bytes)
-if result.valid:
-    # 활성화
-```
-
-## Node.js 사용
-
-`nodejs/licenseguard.js` 의 `LicenseGuard` 클래스를 사용한다.
-`koffi` 의존성은 `run.sh` 가 자동 설치한다.
-
-```js
-const { LicenseGuard } = require('./licenseguard');
-const result = new LicenseGuard().verify(certBuf, pubBuf, ctxBuf);
-if (result.valid) { /* 활성화 */ }
 ```
 
 ## 검증 결과 코드
