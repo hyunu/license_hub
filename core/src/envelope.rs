@@ -28,7 +28,6 @@ use sha2::{Digest, Sha256};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::slice;
 use thiserror::Error;
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::Certificate;
@@ -358,99 +357,6 @@ fn challenge_payload(challenge: &Challenge) -> Vec<u8> {
 }
 
 //--------------------------------------------------------------------------------
-// Activation Token (LH-REQ-021)
-//--------------------------------------------------------------------------------
-
-/// X가 라이선스 검증 성공 후 Y에 전달하는 짧은 수명의 활성화 토큰.
-///
-/// Y는 이 토큰이 유효하지 않으면 핵심 기능을 실행하지 않는다. 토큰은
-/// Application ID·Session·Feature·Expiration·Nonce에 바인딩된다.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ActivationToken {
-    /// 토큰이 유효한 Application ID.
-    pub app_id: String,
-    /// 세션 식별자.
-    pub session_id: String,
-    /// 활성화할 기능 식별자.
-    pub feature: String,
-    /// 발급 시각(RFC 3339 UTC).
-    pub issued_at: String,
-    /// 만료 시각(RFC 3339 UTC).
-    pub expires_at: String,
-    /// Replay 방지용 Nonce.
-    pub nonce: String,
-}
-
-/// 활성화 토큰 검증 실패 사유.
-#[derive(Debug, Error, PartialEq)]
-pub enum TokenError {
-    #[error("invalid token format")]
-    InvalidFormat,
-    #[error("token has expired")]
-    Expired,
-    #[error("token is not yet valid")]
-    NotYetValid,
-    #[error("token application or session does not match")]
-    BindingMismatch,
-}
-
-/// 새 활성화 토큰을 생성한다.
-pub fn issue_activation_token(
-    app_id: impl Into<String>,
-    session_id: impl Into<String>,
-    feature: impl Into<String>,
-    issued_at: impl Into<String>,
-    expires_at: impl Into<String>,
-) -> ActivationToken {
-    let mut nonce = [0u8; 16];
-    getrandom::fill(&mut nonce).expect("operating system random source unavailable");
-    ActivationToken {
-        app_id: app_id.into(),
-        session_id: session_id.into(),
-        feature: feature.into(),
-        issued_at: issued_at.into(),
-        expires_at: expires_at.into(),
-        nonce: URL_SAFE_NO_PAD.encode(nonce),
-    }
-}
-
-/// 활성화 토큰을 검증한다.
-///
-/// - 인자: token: 검증할 토큰
-///   app_id: 현재 Application ID
-///   session_id: 현재 세션 ID
-///   now: 검증 기준 시각(RFC 3339 UTC)
-/// - 리턴: Ok(()) 또는 Err(TokenError)
-pub fn validate_activation_token(
-    token: &ActivationToken,
-    app_id: &str,
-    session_id: &str,
-    now: &str,
-) -> Result<(), TokenError> {
-    if token.app_id.is_empty() || token.feature.is_empty() {
-        return Err(TokenError::InvalidFormat);
-    }
-    let issued =
-        OffsetDateTime::parse(&token.issued_at, &Rfc3339).map_err(|_| TokenError::InvalidFormat)?;
-    let expires = OffsetDateTime::parse(&token.expires_at, &Rfc3339)
-        .map_err(|_| TokenError::InvalidFormat)?;
-    let now = OffsetDateTime::parse(now, &Rfc3339).map_err(|_| TokenError::InvalidFormat)?;
-    if expires <= issued {
-        return Err(TokenError::InvalidFormat);
-    }
-    if now < issued {
-        return Err(TokenError::NotYetValid);
-    }
-    if now >= expires {
-        return Err(TokenError::Expired);
-    }
-    if token.app_id != app_id || token.session_id != session_id {
-        return Err(TokenError::BindingMismatch);
-    }
-    Ok(())
-}
-
-//--------------------------------------------------------------------------------
 // C ABI
 //--------------------------------------------------------------------------------
 
@@ -764,28 +670,6 @@ mod tests {
         assert_eq!(
             verify_challenge(&other_pub, &challenge, &sig),
             Err(EnvelopeError::InvalidSignature)
-        );
-    }
-
-    #[test]
-    fn activation_token_validates_within_lifetime() {
-        let token = issue_activation_token(
-            "app-1",
-            "sess-1",
-            "core",
-            "2026-01-01T00:00:00Z",
-            "2026-01-01T01:00:00Z",
-        );
-        assert!(
-            validate_activation_token(&token, "app-1", "sess-1", "2026-01-01T00:30:00Z").is_ok()
-        );
-        assert_eq!(
-            validate_activation_token(&token, "app-1", "sess-1", "2026-01-01T01:30:00Z"),
-            Err(TokenError::Expired)
-        );
-        assert_eq!(
-            validate_activation_token(&token, "app-2", "sess-1", "2026-01-01T00:30:00Z"),
-            Err(TokenError::BindingMismatch)
         );
     }
 }
