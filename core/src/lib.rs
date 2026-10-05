@@ -144,7 +144,9 @@ const ALGORITHM: &str = "Ed25519";
 /// 검증 서버와 가드(온라인 조회)가 공유하는 단일 값이다. 가드에 내장되므로
 /// 추출될 수 있고, 값을 바꾸면 양쪽을 함께 재배포해야 한다. 더 강한 보증이
 /// 필요하면 요청 서명이나 별도 토큰으로 대체한다.
-pub const VERIFY_API_KEY: &str = "lh-verify-77c1e0b2a94f4d3e";
+///
+/// 사람이 보고 외우거나 추측할 수 없도록 임의 UUID v4 값을 쓴다.
+pub const VERIFY_API_KEY: &str = "a9e54925-1acb-4214-8b2a-38616c561b96";
 
 /// L2 검증 요청에서 API 키를 담는 헤더 이름.
 pub const VERIFY_API_KEY_HEADER: &str = "x-licensehub-key";
