@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, downloadApplicationPublicKey, downloadCertificate, downloadEncryptedLicense, downloadLicensePublicKey, getCertificate, getEncryptedLicense, saveApplicationPrivateKey, type License } from '../api'
+import { api, downloadApplicationPublicKey, downloadCertificate, downloadEncryptedLicense, downloadLicensePublicKey, saveApplicationPrivateKey, type License } from '../api'
 import { Toasts, useToasts } from '../toast'
 
 // 이미지의 P 필드 (Application ID, Target Language, Version, Level, Owner,
@@ -37,13 +37,6 @@ export function Licenses() {
   // 서버가 자동 생성한 개인키. 생성 응답에서 한 번만 나오므로 여기서 받아
   // 파일로 저장하게 한 뒤 없앤다.
   const [keyReveal, setKeyReveal] = useState<{ license: string; privatePem: string } | null>(null)
-  const [certView, setCertView] = useState<{
-    license: string
-    cert: Record<string, unknown>
-    lic?: Record<string, unknown> | null
-    appId?: string | null
-    lang?: string
-  } | null>(null)
 
   const load = (status?: string) => {
     api
@@ -100,13 +93,6 @@ export function Licenses() {
   const issue = async (lic: License) => {
     try {
       const res = await api.issue(lic.id)
-      setCertView({
-        license: lic.license_id,
-        cert: res.certificate,
-        lic: res.encrypted_license,
-        appId: res.application_id,
-        lang: res.target_language,
-      })
       // 키 없이 등록된 라이선스를 발급하면서 새 키를 만든 경우에도 개인키가
       // 이 응답으로 한 번만 온다.
       if (typeof res.application_private_key === 'string') {
@@ -135,66 +121,36 @@ export function Licenses() {
 // 최종 산출물인 암호화된 라이선스 파일을 내려받는다.
   const downloadLic = async (lic: License) => {
     if (!lic.encrypted_license) {
-      bad(
-        lic.application_public_key
-          ? `'${lic.license_id}'에 아직 발급된 LIC가 없습니다 — 먼저 발급하세요`
-          : `'${lic.license_id}'에 Application 공개키가 없어 암호화된 라이선스를 만들 수 없습니다`,
-      )
+      bad(`'${lic.license_id}'에 아직 발급된 암호화 파일이 없습니다 — 먼저 발급하세요`)
       return
     }
     try {
       await downloadEncryptedLicense(lic.id, lic.license_id)
-      ok(`암호화된 LIC 다운로드됨 — ${lic.license_id}.lic.json`)
+      ok(`암호화 파일 다운로드됨 — ${lic.license_id}.lic.json`)
     } catch (err) {
-      bad(err instanceof Error ? err.message : 'LIC download failed')
+      bad(err instanceof Error ? err.message : '암호화 파일 다운로드 실패')
     }
   }
 
-  const viewLic = async (lic: License) => {
-    if (!lic.encrypted_license) {
-      bad(`'${lic.license_id}'에 Application 공개키가 없어 암호화된 라이선스를 만들 수 없습니다`)
-      return
-    }
-    try {
-      const licView = await getEncryptedLicense(lic.id)
-      const cert = await getCertificate(lic.id)
-      setCertView({ license: lic.license_id, cert, lic: licView, appId: lic.application_id, lang: lic.target_language ?? 'any' })
-    } catch (err) {
-      bad(err instanceof Error ? err.message : 'LIC load failed')
-    }
-  }
-
-  const download = async (lic: License) => {
+  const downloadCert = async (lic: License) => {
     if (lic.certificates === 0) {
       bad(`'${lic.license_id}'에 아직 발급된 인증서가 없습니다 — 먼저 발급하세요`)
       return
     }
     try {
       await downloadCertificate(lic.id, `${lic.license_id}.json`)
+      ok(`인증서 다운로드됨 — ${lic.license_id}.json`)
     } catch (err) {
-      bad(err instanceof Error ? err.message : 'download failed')
-    }
-  }
-
-  const viewCert = async (lic: License) => {
-    if (lic.certificates === 0) {
-      bad(`'${lic.license_id}'에 아직 발급된 인증서가 없습니다 — 먼저 발급하세요`)
-      return
-    }
-    try {
-      const cert = await getCertificate(lic.id)
-      setCertView({ license: lic.license_id, cert, lic: null, appId: lic.application_id, lang: lic.target_language ?? 'any' })
-    } catch (err) {
-      bad(err instanceof Error ? err.message : 'certificate load failed')
+      bad(err instanceof Error ? err.message : '인증서 다운로드 실패')
     }
   }
 
   const downloadKey = async (lic: License) => {
     try {
       await downloadLicensePublicKey(lic.license_id)
-      ok(`공개키 다운로드됨 — ${lic.license_id}-public-key.pem`)
+      ok(`서명키 다운로드됨 — ${lic.license_id}-public-key.pem`)
     } catch (err) {
-      bad(err instanceof Error ? err.message : 'public key download failed')
+      bad(err instanceof Error ? err.message : '서명키 다운로드 실패')
     }
   }
 
@@ -299,7 +255,7 @@ export function Licenses() {
             <tr>
               <th>License</th><th>제품 / 버전</th><th>등급</th><th>언어</th>
               <th>Application ID</th><th>소유자</th>
-              <th>만료</th><th>상태</th><th>LIC</th><th>Application 키</th><th>작업</th>
+              <th>만료</th><th>상태</th><th>암호화</th><th>키</th><th>작업</th>
             </tr>
           </thead>
           <tbody>
@@ -332,19 +288,18 @@ export function Licenses() {
                 <td className="actions">
                   <button className="btn small" onClick={() => downloadAppPublicKey(l)}
                     title="라이선스를 암호화할 때 쓰이는 공개키(.pem)">공개키</button>
-                </td>
-                <td className="actions">
-                  <button className="btn small primary" onClick={() => issue(l)}>발급</button>
-                  <button className="btn small" onClick={() => viewLic(l)} disabled={!l.encrypted_license}
-                    title={l.encrypted_license ? '암호화된 라이선스 확인' : '아직 발급되지 않았습니다'}>LIC</button>
-                  <button className="btn small" onClick={() => downloadLic(l)} disabled={!l.encrypted_license}
-                    title={l.encrypted_license ? `${l.license_id}.lic.json 내려받기` : '아직 발급되지 않았습니다'}>LIC↓</button>
-                  <button className="btn small" onClick={() => viewCert(l)} disabled={l.certificates === 0}
-                    title={l.certificates === 0 ? '인증서를 먼저 발급하세요' : undefined}>보기</button>
-                  <button className="btn small" onClick={() => download(l)} disabled={l.certificates === 0}
-                    title={l.certificates === 0 ? '인증서를 먼저 발급하세요' : undefined}>다운로드</button>
                   <button className="btn small" onClick={() => downloadKey(l)}
                     title="라이선스 검증에 쓰이는 서명 공개키(.pem)">서명키</button>
+                </td>
+                <td className="actions">
+                  <button className="btn small primary" onClick={() => issue(l)}
+                    title="암호화된 라이선스 파일을 만듭니다">발급</button>
+                  <button className="btn small" onClick={() => downloadLic(l)} disabled={!l.encrypted_license}
+                    title={l.encrypted_license
+                      ? `${l.license_id}.lic.json 내려받기`
+                      : '먼저 발급하세요'}>암호화 파일</button>
+                  <button className="btn small" onClick={() => downloadCert(l)} disabled={l.certificates === 0}
+                    title={l.certificates === 0 ? '먼저 발급하세요' : `${l.license_id}.json 내려받기`}>인증서</button>
                   <button className={`btn small ${l.status === 'active' ? 'danger' : ''}`} onClick={() => toggleStatus(l)}>
                     {l.status === 'active' ? '폐기' : '복구'}
                   </button>
@@ -378,45 +333,6 @@ export function Licenses() {
           </section>
         )}
 
-        {certView && (
-          <section className="sec" style={{ marginTop: 22 }}>
-            <div className="sec-head">
-              <h3 className="sec-title">
-                {certView.lic ? '암호화된 라이선스 파일' : '발급된 인증서'} — {certView.license}
-              </h3>
-              <div className="actions">
-                {certView.lic && (
-                  <button
-                    className="btn small primary"
-                    onClick={async () => {
-                      try {
-                        await downloadEncryptedLicense(
-                          licenses.find((l) => l.license_id === certView.license)?.id ?? 0,
-                          certView.license,
-                        )
-                      } catch (err) {
-                        bad(err instanceof Error ? err.message : '다운로드 실패')
-                      }
-                    }}
-                  >
-                    다운로드
-                  </button>
-                )}
-                <button className="btn small" onClick={() => setCertView(null)}>닫기</button>
-              </div>
-            </div>
-            {certView.lic ? (
-              <>
-                <p className="muted small" style={{ margin: '0 0 8px' }}>
-                  이 파일은 암호화되어 있어 원본 정보가 노출되지 않습니다.
-                </p>
-                <pre className="jsonbox">{JSON.stringify(certView.lic, null, 2)}</pre>
-              </>
-            ) : (
-              <pre className="jsonbox">{JSON.stringify(certView.cert, null, 2)}</pre>
-            )}
-          </section>
-        )}
       </div>
       <Toasts toasts={toasts} />
     </div>

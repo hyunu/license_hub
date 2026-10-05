@@ -236,6 +236,7 @@ export async function downloadCertificate(id: number, filename: string): Promise
 }
 
 // 라이선스의 최신 인증서 JSON을 조회한다 (다운로드 경로 재사용).
+
 export async function getCertificate(id: number): Promise<Record<string, unknown>> {
   if (DEMO) return demoIssueCertificate(id).certificate
   const token = localStorage.getItem('lh_token')
@@ -285,8 +286,8 @@ async function downloadPem(id: number, kind: string, filename: string): Promise<
   URL.revokeObjectURL(url)
 }
 
-// 최종 산출물인 암호화된 라이선스 파일을 내려받는다. Application 공개키로 암호화되어
-// 있어 파일을 열어도 P의 원문은 노출되지 않는다.
+// 최종 산출물인 암호화된 라이선스 파일을 내려받는다. Application 공개키로
+// 암호화되어 있어 파일을 열어도 서명 원문은 노출되지 않는다.
 export async function downloadEncryptedLicense(id: number, licenseId: string): Promise<void> {
   if (DEMO) {
     console.info(`[demo] download encrypted LIC for license #${id} -> ${licenseId}.lic.json`)
@@ -304,17 +305,6 @@ export async function downloadEncryptedLicense(id: number, licenseId: string): P
   a.download = `${licenseId}.lic.json`
   a.click()
   URL.revokeObjectURL(url)
-}
-
-// 암호화된 LIC 엔벨로프를 화면에서 확인한다 (ciphertext는 볼 수 없음).
-export async function getEncryptedLicense(id: number): Promise<Record<string, unknown>> {
-  if (DEMO) return demoEncryptedLicense()
-  const token = localStorage.getItem('lh_token')
-  const res = await fetch(BASE + `/api/licenses/${id}/license`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (!res.ok) throw new Error(`LIC load failed: ${res.status}`)
-  return res.json()
 }
 
 // 라이선스 검증에 쓰이는 서명 공개키(.pem) 다운로드. 발급 시 이력 DB에 저장된
