@@ -177,7 +177,7 @@ sudo systemctl enable --now caddy
 공통:
 
 - **VCN 보안목록**: 인바운드 `TCP 443`과 `TCP 80`(ACME 검증용) 오픈.
-- 최종 URL을 프론트 `API_BASE_URL`에 사용한다. L2/L3 검증 서버 주소는
+- 최종 URL을 프론트 `API_BASE_URL`에 사용한다. L2 검증 서버 주소는
   라이선스 발급 시 입력하므로 여기서 정하지 않는다.
 
 ### 6.2 Tailscale Funnel
@@ -191,7 +191,7 @@ tailscale funnel status
 ```
 
 - Funnel은 Tailscale이 443에서 TLS를 종료하고 터널 안의 8080으로 전달한다.
-- 이 URL을 프론트 `API_BASE_URL`에 사용한다. L2/L3 검증 서버 주소는
+- 이 URL을 프론트 `API_BASE_URL`에 사용한다. L2 검증 서버 주소는
   라이선스 발급 시 입력하므로 여기서 정하지 않는다.
 - Funnel은 백엔드를 공개 인터넷에 노출하므로 API 인증(Bearer 토큰)이
   보호의 핵심이다.
@@ -271,6 +271,6 @@ Tailscale IP는 방문자 브라우저에서 접근 불가다.
 
 - **Tailscale** = 관리·운영 접근. **Funnel(공개 HTTPS)** = 서비스 접근. 분리.
 - `/api/auth/login` 은 비밀번호(argon2), 나머지 API는 Bearer 토큰 인증.
-- `/api/verify` 는 L2/L3 검증용 공개 상태. 필요한 경우 리버스프록시에서 제한.
+- `/api/verify` 는 L2 검증용 공개 엔드포인트. 필요한 경우 리버스프록시에서 제한.
 - 공개 HTTPS를 쓰므로 관리자 비밀번호(`LICENSEHUB_ADMIN_PASSWORD`)를 반드시
   강하게 설정한다.

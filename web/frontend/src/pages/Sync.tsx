@@ -46,7 +46,7 @@ export function Sync() {
           </div>
           <table className="ledger">
             <tbody>
-              <tr><td className="mono">certificates/&#123;core|secure|device-bound&#125;/&#123;license-id&#125;.json</td><td className="muted">발급된 인증서</td></tr>
+              <tr><td className="mono">certificates/&#123;core|secure&#125;/&#123;license-id&#125;.json</td><td className="muted">발급된 인증서</td></tr>
               <tr><td className="mono">blacklist/blacklist.json</td><td className="muted">폐기 목록 (버전 포함)</td></tr>
               <tr><td className="mono">keys/public-key.pem</td><td className="muted">검증용 공개키</td></tr>
             </tbody>

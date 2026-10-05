@@ -13,7 +13,6 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::slice;
@@ -157,7 +156,7 @@ pub struct Certificate {
     pub certificate_id: String,
     /// 내부 License와 연결되는 식별자.
     pub license_id: String,
-    /// 인증서 등급. 1은 Offline, 2는 Server Secure, 3은 Device-Bound다.
+    /// 인증서 등급. 1은 Offline, 2는 Server Secure다.
     pub level: u8,
     /// 인증서가 허용하는 제품 식별자.
     pub product: String,
@@ -176,12 +175,9 @@ pub struct Certificate {
     pub expires_at: String,
     /// 인증서 발급자 식별자.
     pub issuer: String,
-    /// L2/L3에서 사용할 서버 검증 정보.
+    /// L2에서 사용할 서버 검증 정보.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server: Option<ServerInfo>,
-    /// L3에서 사용할 장치 바인딩 정보.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub device: Option<DeviceBinding>,
     /// 제품별 정책과 기능 목록을 담는 확장 영역.
     ///
     /// 이 값도 서명 대상에 포함된다. 다만 현재 Core는 Metadata의
@@ -200,20 +196,11 @@ pub struct Certificate {
     pub signature: String,
 }
 
-/// L2/L3 서버 검증 API의 위치.
+/// L2 서버 검증 API의 위치.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ServerInfo {
     /// 실제 네트워크 요청은 Core가 수행하지 않는다.
     pub verification_url: String,
-}
-
-/// 인증서를 특정 장치에 귀속시키는 정보.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct DeviceBinding {
-    /// Device ID를 계산한 방식.
-    pub binding_type: String,
-    /// 원본 Device ID가 아닌 해시된 값.
-    pub value: String,
 }
 
 /// 인증서 발급 요청을 구성하는 Builder.
@@ -230,7 +217,6 @@ pub struct CertificateRequest {
     issued_at: String,
     expires_at: String,
     verification_url: Option<String>,
-    device_id: Option<String>,
     application_id: Option<String>,
     target_language: Option<String>,
     metadata: BTreeMap<String, Value>,
@@ -245,7 +231,7 @@ impl CertificateRequest {
     // 만든다. 날짜 기본값은 테스트·예제용이므로 운영 발급자는 issued_at과
     // expires_at을 반드시 명시해야 한다.
     // - 인자: license_id: 라이선스 식별자
-    //         level: 인증서 등급 (1=Offline, 2=Secure, 3=Device-Bound)
+    //         level: 인증서 등급 (1=Offline, 2=Secure)
     //         product: 제품 식별자
     //         version: 제품 버전
     // - 리턴: CertificateRequest 빌더 인스턴스
@@ -264,7 +250,6 @@ impl CertificateRequest {
             issued_at: "2026-01-01T00:00:00Z".into(),
             expires_at: "2027-01-01T00:00:00Z".into(),
             verification_url: None,
-            device_id: None,
             application_id: None,
             target_language: None,
             metadata: BTreeMap::new(),
@@ -293,24 +278,12 @@ impl CertificateRequest {
     }
 
     //--------------------------------------------------------------------------------
-    // L2/L3 서버 검증 URL을 설정한다.
+    // L2 서버 검증 URL을 설정한다.
     // - 인자: value: 검증 서버의 HTTPS URL
     // - 리턴: self (체이닝용)
     //--------------------------------------------------------------------------------
     pub fn verification_url(mut self, value: impl Into<String>) -> Self {
         self.verification_url = Some(value.into());
-        self
-    }
-
-    //--------------------------------------------------------------------------------
-    // L3에 사용할 원본 Device ID를 설정한다.
-    //
-    // 원본 값은 인증서에 저장되지 않고 SHA-256 해시만 기록된다.
-    // - 인자: value: 장치 식별을 위한 원본 ID
-    // - 리턴: self (체이닝용)
-    //--------------------------------------------------------------------------------
-    pub fn device_id(mut self, value: impl Into<String>) -> Self {
-        self.device_id = Some(value.into());
         self
     }
 
@@ -451,10 +424,6 @@ impl Issuer {
             server: request
                 .verification_url
                 .map(|verification_url| ServerInfo { verification_url }),
-            device: request.device_id.map(|device_id| DeviceBinding {
-                binding_type: "device-id-sha256".into(),
-                value: hash_device_id(&device_id),
-            }),
             metadata: request.metadata,
             children: request.children,
             signature_algorithm: ALGORITHM.into(),
@@ -476,7 +445,7 @@ pub enum IssueError {
     Serialization(String),
 }
 
-/// L2/L3 서버 검증 결과.
+/// L2 서버 검증 결과.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerStatus {
     Approved,
@@ -509,9 +478,7 @@ pub struct VerificationContext {
     pub application_id: Option<String>,
     /// 설정된 경우 인증서의 Target Language와 일치해야 한다.
     pub target_language: Option<String>,
-    /// L3 검증에 사용할 현재 장치의 원본 ID.
-    pub device_id: Option<String>,
-    /// L2/L3 서버 검증 결과.
+    /// L2 서버 검증 결과.
     pub server_status: Option<ServerStatus>,
     /// License 또는 Certificate가 Blacklist에 포함되었는지 여부.
     pub blacklisted: bool,
@@ -538,7 +505,6 @@ impl Default for VerificationContext {
             executable_name: None,
             application_id: None,
             target_language: None,
-            device_id: None,
             server_status: None,
             blacklisted: false,
             revoked: false,
@@ -560,21 +526,12 @@ impl VerificationContext {
         }
     }
     //--------------------------------------------------------------------------------
-    // L2/L3 서버 검증 결과를 설정한다.
+    // L2 서버 검증 결과를 설정한다.
     // - 인자: status: 서버 승인(Approved) 또는 거부(Rejected) 상태
     // - 리턴: self (체이닝용)
     //--------------------------------------------------------------------------------
     pub fn server(mut self, status: ServerStatus) -> Self {
         self.server_status = Some(status);
-        self
-    }
-    //--------------------------------------------------------------------------------
-    // 현재 장치의 원본 ID를 설정한다. L3 검증에서 해시 비교에 사용된다.
-    // - 인자: value: 현재 장치 식별을 위한 원본 ID
-    // - 리턴: self (체이닝용)
-    //--------------------------------------------------------------------------------
-    pub fn device_id(mut self, value: impl Into<String>) -> Self {
-        self.device_id = Some(value.into());
         self
     }
     //--------------------------------------------------------------------------------
@@ -644,8 +601,6 @@ pub enum VerificationError {
     Revoked,
     #[error("license is blacklisted")]
     Blacklisted,
-    #[error("device does not match certificate")]
-    DeviceMismatch,
     #[error("certificate chain is invalid")]
     ChainInvalid,
     #[error("certificate chain is too deep")]
@@ -658,12 +613,12 @@ pub enum VerificationError {
 // 인증서 전체를 검증한다.
 //
 // 순서: 체인 깊이·Schema -> 서명 알고리즘·서명 -> 발급일·만료일·제품 ->
-// 등급별 서버·Device -> Revocation·Blacklist -> 하위 인증서 재귀 검증.
+// 등급별 서버 -> Revocation·Blacklist -> 하위 인증서 재귀 검증.
 // 하나라도 실패하면 Err를 반환하며, 호출자는 성공한 경우에만 응용 SW의
 // 핵심 기능을 활성화해야 한다.
 // - 인자: certificate: 검증할 인증서
 //         public_key: 검증용 공개키
-//         context: 서버 상태, Device, 정책 등 검증 환경
+//         context: 서버 상태, 정책 등 검증 환경
 // - 리턴: Ok(()) 또는 Err(VerificationError)
 //--------------------------------------------------------------------------------
 pub fn verify(
@@ -702,7 +657,7 @@ pub(crate) fn verify_at_depth(
     if certificate.signature_algorithm != ALGORITHM {
         return Err(VerificationError::UnsupportedAlgorithm);
     }
-    if certificate.level == 0 || certificate.level > 3 {
+    if certificate.level == 0 || certificate.level > 2 {
         return Err(VerificationError::InvalidFormat);
     }
     if certificate.product.is_empty() || certificate.license_id.is_empty() {
@@ -784,32 +739,17 @@ pub(crate) fn verify_at_depth(
     {
         return Err(VerificationError::PolicyRejected);
     }
-    // 등급 필드와 부가 필드의 조합을 확인한다. 예를 들어 L1에 server나
-    // device 정보가 붙어 있으면 발급 정책 위반으로 간주한다.
+    // 등급 필드와 부가 필드의 조합을 확인한다. 예를 들어 L1에 server 정보가
+    // 붙어 있으면 발급 정책 위반으로 간주한다.
     match certificate.level {
-        1 if certificate.server.is_some() || certificate.device.is_some() => {
+        1 if certificate.server.is_some() => {
             return Err(VerificationError::InvalidMetadata);
         }
         2 => {
-            if certificate.server.is_none() || certificate.device.is_some() {
+            if certificate.server.is_none() {
                 return Err(VerificationError::InvalidMetadata);
             }
             check_server(context)?;
-        }
-        3 => {
-            if certificate.server.is_none() || certificate.device.is_none() {
-                return Err(VerificationError::InvalidMetadata);
-            }
-            check_server(context)?;
-            let expected = context.device_id.as_deref().map(hash_device_id);
-            if expected.as_deref()
-                != certificate
-                    .device
-                    .as_ref()
-                    .map(|device| device.value.as_str())
-            {
-                return Err(VerificationError::DeviceMismatch);
-            }
         }
         _ => {}
     }
@@ -833,7 +773,7 @@ pub(crate) fn verify_at_depth(
 }
 
 //--------------------------------------------------------------------------------
-// L2/L3의 서버 검증 상태를 확인한다.
+// L2의 서버 검증 상태를 확인한다.
 // - 인자: context: 서버 상태가 포함된 검증 환경
 // - 리턴: Ok(()) 또는 Err(ServerRequired/ServerRejected)
 //--------------------------------------------------------------------------------
@@ -855,34 +795,22 @@ fn check_server(context: &VerificationContext) -> Result<(), VerificationError> 
 fn validate_request(request: &CertificateRequest) -> Result<(), IssueError> {
     // 잘못된 조합을 서명하기 전에 차단한다. 서명된 뒤에는 잘못된 정책을
     // 단순 데이터 오류로 되돌릴 수 없으므로 발급 단계에서 Fail-Closed한다.
-    if !(1..=3).contains(&request.level) {
-        return Err(IssueError::InvalidRequest(
-            "level must be 1, 2, or 3".into(),
-        ));
+    if !(1..=2).contains(&request.level) {
+        return Err(IssueError::InvalidRequest("level must be 1 or 2".into()));
     }
     if request.license_id.is_empty() || request.product.is_empty() || request.version.is_empty() {
         return Err(IssueError::InvalidRequest(
             "license, product, and version are required".into(),
         ));
     }
-    if request.level == 1 && (request.verification_url.is_some() || request.device_id.is_some()) {
+    if request.level == 1 && request.verification_url.is_some() {
         return Err(IssueError::InvalidRequest(
-            "level 1 cannot contain server or device binding".into(),
+            "level 1 cannot contain server verification".into(),
         ));
     }
     if request.level >= 2 && request.verification_url.is_none() {
         return Err(IssueError::InvalidRequest(
             "server verification URL is required".into(),
-        ));
-    }
-    if request.level == 2 && request.device_id.is_some() {
-        return Err(IssueError::InvalidRequest(
-            "level 2 cannot contain device binding".into(),
-        ));
-    }
-    if request.level == 3 && request.device_id.is_none() {
-        return Err(IssueError::InvalidRequest(
-            "device binding is required".into(),
         ));
     }
     Ok(())
@@ -962,16 +890,6 @@ fn parse_time(value: &str) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(value, &Rfc3339).ok()
 }
 //--------------------------------------------------------------------------------
-// 원본 Device ID의 SHA-256 해시를 URL-safe Base64로 생성한다.
-//
-// 원문이 인증서에 저장되지 않도록 하며, 민감한 Hardware ID 정보도 보호된다.
-// - 인자: value: 원본 Device ID
-// - 리턴: URL-safe Base64 해시 문자열
-//--------------------------------------------------------------------------------
-fn hash_device_id(value: &str) -> String {
-    URL_SAFE_NO_PAD.encode(Sha256::digest(value.as_bytes()))
-}
-//--------------------------------------------------------------------------------
 // 운영체제 난수원으로 인증서 식별자를 생성한다.
 // - 인자: 없음
 // - 리턴: URL-safe Base64 식별자 문자열
@@ -993,7 +911,6 @@ pub(crate) struct FfiVerificationContext {
     executable_name: Option<String>,
     application_id: Option<String>,
     target_language: Option<String>,
-    device_id: Option<String>,
     server_status: Option<String>,
     #[serde(default)]
     blacklisted: bool,
@@ -1024,7 +941,6 @@ impl FfiVerificationContext {
             executable_name: self.executable_name,
             application_id: self.application_id,
             target_language: self.target_language,
-            device_id: self.device_id,
             server_status,
             blacklisted: self.blacklisted,
             revoked: self.revoked,
@@ -1188,10 +1104,9 @@ pub(crate) fn verification_code(result: Result<(), VerificationError>) -> u32 {
         Err(VerificationError::ServerRejected) => 9,
         Err(VerificationError::Revoked) => 10,
         Err(VerificationError::Blacklisted) => 11,
-        Err(VerificationError::DeviceMismatch) => 12,
-        Err(VerificationError::ChainInvalid) => 13,
-        Err(VerificationError::ChainTooDeep) => 14,
-        Err(VerificationError::PolicyRejected) => 15,
+        Err(VerificationError::ChainInvalid) => 12,
+        Err(VerificationError::ChainTooDeep) => 13,
+        Err(VerificationError::PolicyRejected) => 14,
     }
 }
 
@@ -1304,7 +1219,7 @@ mod tests {
     }
 
     #[test]
-    fn secure_and_device_bound_policies_are_enforced() {
+    fn secure_policy_is_enforced() {
         let issuer = Issuer::generate("test-key");
         let secure = issuer
             .issue(
@@ -1327,23 +1242,6 @@ mod tests {
                 &VerificationContext::default().server(ServerStatus::Approved)
             )
             .is_ok()
-        );
-        let bound = issuer
-            .issue(
-                CertificateRequest::new("license-1", 3, "DXi", "1.2.0")
-                    .verification_url("https://license.example/verify")
-                    .device_id("device-a"),
-            )
-            .unwrap();
-        assert_eq!(
-            verify(
-                &bound,
-                &issuer.verifying_key(),
-                &VerificationContext::default()
-                    .server(ServerStatus::Approved)
-                    .device_id("device-b")
-            ),
-            Err(VerificationError::DeviceMismatch)
         );
     }
 

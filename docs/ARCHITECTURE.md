@@ -79,8 +79,7 @@ Developer / Administrator
        ├── Certificate Load
        ├── Signature / Metadata / Expiration Verify (Core 기반)
        ├── Server Check (Backend API 호출)
-       ├── Blacklist Cache
-       └── Device Binding
+       └── Blacklist Cache
 ```
 
 ## 4. 계층 구조
@@ -125,7 +124,7 @@ Developer / Administrator
 - 인증서 모델 및 Schema 검증
 - 서명 대상 canonicalization
 - Ed25519 서명 및 검증
-- L1/L2/L3 등급별 검증 정책
+- L1/L2 등급별 검증 정책
 - 중첩 인증서 및 체인 검증
 - C ABI 제공
 
@@ -143,9 +142,8 @@ Developer / Administrator
 
 - 인증서 로드 및 캐시
 - 서명·Metadata·만료 검증
-- L2/L3 서버 검증(Backend API 호출)
+- L2 서버 검증(Backend API 호출)
 - Blacklist 다운로드 및 로컬 캐시
-- Device Binding 비교
 - 검증 결과에 따른 응용 SW 활성화 제어
 
 LicenseGuard에는 GitHub Token, Private Key, 발급 기능이 포함되지 않는다.
@@ -156,7 +154,7 @@ LicenseGuard에는 GitHub Token, Private Key, 발급 기능이 포함되지 않�
 - 사용자·권한 관리
 - License 생성·조회·변경·폐기
 - 인증서 발급( Core 호출) 및 서명
-- L2/L3 활성화 검증 API
+- L2 활성화 검증 API
 - Blacklist/Revocation 처리
 - GitHub Repository 동기화(GitHub App)
 - 감사 로그
@@ -184,8 +182,7 @@ LicenseGuard에는 GitHub Token, Private Key, 발급 기능이 포함되지 않�
 LicenseHub-Repository/
 ├── certificates/
 │   ├── core/
-│   ├── secure/
-│   └── device-bound/
+│   └── secure/
 ├── blacklist/
 │   └── blacklist.json
 ├── manifest/
@@ -240,13 +237,13 @@ Core는 같은 Rust 라이브러리가 두 곳에서 각각의 책임만 사용�
 
 ```text
 Web App / 관리자
-      │  License 발급 요청 (제품, 등급, 기간, Device, Metadata)
+      │  License 발급 요청 (제품, 등급, 기간, Metadata)
       v
 Backend
       │  1. CertificateRequest 빌더로 요청 구성
       │  2. Issuer::issue()
       │       ├─ ① 요청 정책 검증  (등급별 필수 필드)
-      │       ├─ ② 인증서 조립      (schema, id, dates, server, device)
+      │       ├─ ② 인증서 조립      (schema, id, dates, server)
       │       ├─ ③ canonicalization (서명 대상 바이트 생성)
       │       └─ ④ Ed25519 서명     (개인키, Drop 시 자동 소멸)
       │  3. 내부 DB 기록
@@ -258,8 +255,7 @@ Backend
 // 사용 예 (core/examples/issue_certificate.rs)
 let issuer = Issuer::generate("license-signing-key-v1");
 let request = CertificateRequest::new("LICENSE-2026-0001", 3, "DXi", "1.2.0")
-    .verification_url("https://license.example.com/v1/verify")
-    .device_id("example-device-id");
+    .verification_url("https://license.example.com/v1/verify");
 let certificate = issuer.issue(request)?;  // ← Core 사용 지점
 let public_key = issuer.verifying_key();    // ← 배포할 공개키
 ```
@@ -274,7 +270,7 @@ verify(&certificate, &public_key, &context)
       ├─ ① Chain Depth / Schema
       ├─ ② Signature Verify          (공개키)
       ├─ ③ Metadata / Expiration
-      ├─ ④ Level Policy              (L2 서버 상태, L3 Device)
+      ├─ ④ Level Policy              (L2 서버 상태)
       ├─ ⑤ Revocation / Blacklist
       ├─ ⑥ 하위 인증서 재귀 검증
       │
@@ -323,7 +319,6 @@ if (status == 0 && code == LH_VALID) {
 |---|---|---|---|
 | L1 | `Issuer::issue` | `verify` | 없음 (완전 오프라인) |
 | L2 | `Issuer::issue` + 서버 URL | `verify` + 서버 상태 | Backend 활성화 API, Blacklist 조회 |
-| L3 | `Issuer::issue` + Device ID | `verify` + Device 비교 | 현재 장치 ID 수집, 서버 검증 |
 
 ### 6.6 사용 관점의 핵심 규칙
 
@@ -343,7 +338,7 @@ Core의 C ABI(`lh_verify_certificate`)를 C에서 호출할 수 있도록 만든
 
 - 검증 기능만 포함: 발급·개인키·GitHub 자격증명 없음
 - 두 바인딩 모두 동일한 픽스처(`bindings/testdata`)로 검증
-- 고정 테스트 키로 만든 L1/L2/L3 인증서를 공용으로 사용
+- 고정 테스트 키로 만든 L1/L2 인증서를 공용으로 사용
 
 ### 7.2 지원 언어 및 진입점
 
@@ -354,11 +349,11 @@ Core의 C ABI(`lh_verify_certificate`)를 C에서 호출할 수 있도록 만든
 
 ### 7.3 공용 테스트 픽스처
 
-`bindings/testdata/` 에는 고정 개인키(`[7u8; 32]`)로 생성된 L1/L2/L3
+`bindings/testdata/` 에는 고정 개인키(`[7u8; 32]`)로 생성된 L1/L2
 인증서, 공개키(32바이트), 검증 Context가 있다. 각 언어 바인딩은 이
 픽스처로 다음을 검증한다.
 
-- L1/L2/L3 유효 인증서 → VALID (0)
+- L1/L2 유효 인증서 → VALID (0)
 - 변조 인증서 → INVALID_SIGNATURE (4)
 
 픽스처 재생성: `cargo run --example generate_bindings_fixtures`
@@ -392,7 +387,6 @@ GitHub 자격증명·테스트 픽스처는 제외한다.
 |---|---|---|---|
 | L1 | Core Certificate | 서명·Metadata·만료 | 오프라인, 서버 불필요 |
 | L2 | Secure Certificate | L1 + 서버 검증 + Blacklist/Revocation | 복사돼도 서버가 통제 |
-| L3 | Device-Bound Certificate | L2 + Device Binding | 지정 장치에서만 활성화 |
 
 ### 검증 흐름
 
@@ -402,8 +396,7 @@ Certificate
     -> Signature Verify
     -> Metadata / Product / Version
     -> Expiration
-    -> Level Policy (L2/L3 서버 상태, Blacklist, Revocation)
-    -> Device Binding (L3)
+    -> Level Policy (L2 서버 상태, Blacklist, Revocation)
     -> Child Certificates (Chain)
     -> Activation Allowed
 ```
@@ -414,7 +407,7 @@ Certificate
 
 ```text
 Admin/Developer -> Web App/API 로그인
-    -> License 발급 요청 (제품, 등급, 기간, Device 등)
+    -> License 발급 요청 (제품, 등급, 기간 등)
     -> Backend 권한·정책 검증
     -> Core로 인증서 생성 + Private Key 서명
     -> 내부 DB 기록
@@ -452,15 +445,15 @@ Admin이 License 폐기
 - 인증서 신뢰성은 GitHub 존재 여부가 아니라 전자서명으로 보장한다.
 - GitHub에 존재한다와 유효한 License는 다른 개념이다.
 - 오프라인 검증(L1)은 역공학을 절대적으로 막지 못한다. 강한 통제가
-  필요한 제품은 L2/L3를 사용한다.
+  필요한 제품은 L2를 사용한다.
 
 ## 11. 현재 구현 상태
 
 ```text
 구현 완료
 ├── licensehub-core (Rust)
-│   ├── 인증서 발급·서명 (L1/L2/L3)
-│   ├── 검증 (서명/Metadata/만료/서버/Blacklist/Device/체인)
+│   ├── 인증서 발급·서명 (L1/L2)
+│   ├── 검증 (서명/Metadata/만료/서버/Blacklist/체인)
 │   ├── C ABI (lh_verify_certificate)
 │   ├── OS별 빌드 스크립트 (build.sh)
 │   ├── 인증서 발급 예제 (examples/issue_certificate.rs)

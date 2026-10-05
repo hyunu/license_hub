@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "certificate_id": "Sv2nQpvrEJgTh7u1",
+  "certificate_id": "nevRWAZK87RZ8Zb8",
   "license_id": "fixture-l1",
   "level": 1,
   "product": "DXi",
@@ -12,5 +12,5 @@
   "children": [],
   "signature_algorithm": "Ed25519",
   "key_id": "fixture-key",
-  "signature": "2jUeOzwTBnEH1UtJ6GWq3Igy-0JfCeED5HEyKVUWsvgQ2wOcaVoEx7onm2VVdHZIctN7JCW80MRPH9iYYajwAg"
+  "signature": "ZILDopw116G3sQo8parrjH6DBdBQUMOSD3f2AhPfzgOYHK0GP8UXC2-Zdv4TtKVFeCikiV6SQtsSLjlh1omlDg"
 }

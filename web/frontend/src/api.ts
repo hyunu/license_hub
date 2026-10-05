@@ -20,7 +20,6 @@ export interface License {
   version: string
   level: number
   holder: string
-  device_id: string | null
   expires_at: string
   status: string
   created_at: string

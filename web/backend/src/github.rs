@@ -345,8 +345,7 @@ impl GitHubClient {
     pub fn push_certificate(&self, level: i64, license_id: &str, json: &str) -> Result<(), String> {
         let dir = match level {
             1 => "core",
-            2 => "secure",
-            _ => "device-bound",
+            _ => "secure",
         };
         self.write_file(
             &format!("certificates/{dir}/{license_id}.json"),

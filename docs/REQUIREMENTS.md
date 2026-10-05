@@ -22,7 +22,7 @@ LicenseHub는 소프트웨어 및 라이브러리의 배포 과정에서 라이�
 5. Client에는 GitHub Token, GitHub App Credential 또는 Private Key를 포함하지 않는다.
 6. Private Key는 GitHub Repository에 저장하지 않는다.
 7. 초기 GitHub Repository는 Private Repository로 운영한다.
-8. 인증서 등급에 따라 Offline 검증, 서버 검증 및 Device Binding을 단계적으로 적용한다.
+8. 인증서 등급에 따라 Offline 검증과 서버 검증을 단계적으로 적용한다.
 
 ### 1.3 용어
 
@@ -32,7 +32,6 @@ LicenseHub는 소프트웨어 및 라이브러리의 배포 과정에서 라이�
 | Certificate | License의 사용 권한과 검증 정보를 포함하고 Private Key로 서명된 배포 단위 |
 | Client | 배포된 소프트웨어 또는 라이브러리에서 인증서를 검증하고 기능 활성화를 수행하는 모듈 |
 | Core | 인증서 생성·서명·검증을 제공하는 공통 라이브러리 또는 서비스 모듈 |
-| Device Binding | 인증서를 특정 PC 또는 장치의 식별 정보에 귀속하는 기능 |
 | Blacklist | 사용이 금지된 License 또는 Certificate 목록 |
 | Revocation | 발급된 License 또는 Certificate의 효력을 취소하는 행위 |
 
@@ -49,7 +48,6 @@ LicenseHub는 소프트웨어 및 라이브러리의 배포 과정에서 라이�
 - GitHub App 기반 Private Repository 연동
 - 인증서 저장, 다운로드 및 배포
 - License 상태 확인, Blacklist 및 Revocation 처리
-- Device-Bound 인증서 발급 및 검증
 - 인증서 체인 및 중첩 인증서 검증
 - 발급·활성화·변경에 대한 감사 이력 관리
 
@@ -59,7 +57,7 @@ LicenseHub는 소프트웨어 및 라이브러리의 배포 과정에서 라이�
 - GitHub를 내부 사용자·License·감사 데이터의 유일한 데이터베이스로 사용하는 기능
 - Client에 GitHub 자격증명을 배포하는 기능
 
-오프라인 환경의 검증 로직은 Client 내부에 포함되므로 역공학으로 제거될 가능성을 완전히 차단할 수 없다. 따라서 L1은 서명 검증 및 변조 탐지 중심으로 제공하고, 강한 사용 통제가 필요한 경우 L2 또는 L3를 사용해야 한다.
+오프라인 환경의 검증 로직은 Client 내부에 포함되므로 역공학으로 제거될 가능성을 완전히 차단할 수 없다. 따라서 L1은 서명 검증 및 변조 탐지 중심으로 제공하고, 강한 사용 통제가 필요한 경우 L2를 사용해야 한다.
 
 ## 3. 전체 아키텍처
 
@@ -107,7 +105,7 @@ Developer / Administrator
 Core는 발급 모듈과 검증 모듈로 구성한다.
 
 - 발급 모듈: 인증서 생성, canonicalization, 서명
-- 검증 모듈: 서명, Metadata, 만료, 상태 및 Device Binding 검증
+- 검증 모듈: 서명, Metadata, 만료 및 상태 검증
 - 인증서 체인 및 중첩 인증서 검증
 - 응용 SW가 활성화 상태를 확인할 수 있는 API 제공
 
@@ -116,9 +114,8 @@ Core는 발급 모듈과 검증 모듈로 구성한다.
 - 인증서 로드 및 형식 검증
 - 서명 및 Metadata 검증
 - 만료일 검증
-- L2/L3 서버 상태 검증
+- L2 서버 상태 검증
 - Blacklist 캐시 조회
-- Device Binding 검증
 - 검증 결과에 따른 응용 SW 활성화 제어
 
 ## 4. 인증서 등급 요구사항
@@ -170,30 +167,6 @@ Certificate -> Signature -> Metadata -> Server Verification
             -> Blacklist / Revocation -> Activation
 ```
 
-### 4.3 L3 Device-Bound Certificate
-
-L3는 특정 PC 또는 장치에 귀속되는 인증서다.
-
-필수 검증 항목:
-
-- L2의 모든 검증 항목
-- 발급 시 포함된 Device 정보 확인
-- 활성화 시 현재 Device 정보 계산
-- 발급된 Device 정보와 현재 Device 정보 비교
-
-특성:
-
-- 지정된 장치에서만 활성화할 수 있어야 한다.
-- Device 식별값은 원문 대신 해시 또는 안전한 파생값으로 저장할 수 있어야 한다.
-- Device 식별 방식은 운영체제별로 확장 가능해야 한다.
-
-검증 순서:
-
-```text
-Certificate -> Signature -> Metadata -> Server Verification
-            -> Blacklist / Revocation -> Device Binding -> Activation
-```
-
 ## 5. 인증서 요구사항
 
 ### 5.1 기본 구조
@@ -204,12 +177,12 @@ Certificate -> Signature -> Metadata -> Server Verification
 {
   "license_id": "XXXX-XXXX",
   "certificate_id": "CERT-XXXX",
-  "level": 3,
+  "level": 2,
   "product": "DXi",
   "version": "1.2.0",
   "issued_at": "2026-09-21T10:00:00Z",
   "expires_at": "2027-09-21T10:00:00Z",
-  "device_id": "DEVICE-ID",
+  "server": { "verification_url": "https://license.example.com/v1/verify" },
   "metadata": {
     "activation_policy": "..."
   },
@@ -219,7 +192,7 @@ Certificate -> Signature -> Metadata -> Server Verification
 }
 ```
 
-`device_id`와 서버 검증 정보는 인증서 등급에 따라 선택적으로 포함한다.
+서버 검증 정보는 인증서 등급에 따라 선택적으로 포함한다.
 
 ### 5.2 서명 및 직렬화
 
@@ -251,7 +224,7 @@ Certificate -> Signature -> Metadata -> Server Verification
 ### 6.2 License 관리
 
 - License를 생성, 조회, 수정, 폐기할 수 있어야 한다.
-- License별 제품, 버전, 등급, 대상 사용자, 유효기간 및 Device 정책을 관리해야 한다.
+- License별 제품, 버전, 등급, 대상 사용자 및 유효기간을 관리해야 한다.
 - 하나의 License에서 인증서 재발급 이력을 관리해야 한다.
 - 폐기된 License는 새 인증서 발급 대상이 될 수 없어야 한다.
 - 모든 상태 변경을 감사 로그에 기록해야 한다.
@@ -277,7 +250,7 @@ Login -> License 발급 요청 -> 권한·정책 검증 -> 인증서 생성
 - Client는 항상 서명 검증을 먼저 수행해야 한다.
 - 검증 실패 원인을 구분된 결과 코드로 반환해야 한다.
 - 응용 SW의 핵심 기능은 검증 결과가 유효한 경우에만 활성화되어야 한다.
-- L2/L3는 서버 검증 실패 시 온라인·오프라인 정책에 따라 동작을 결정해야 한다.
+- L2는 서버 검증 실패 시 온라인·오프라인 정책에 따라 동작을 결정해야 한다.
 - 검증 모듈은 응용 SW의 주요 기능 지점에서 호출할 수 있어야 한다.
 
 ### 6.5 Blacklist 및 Revocation
@@ -319,7 +292,6 @@ LicenseHub-Repository/
 │   │   └── {license-id}.json
 │   ├── secure/
 │   │   └── {license-id}.json
-│   └── device-bound/
 │       └── {license-id}.json
 ├── blacklist/
 │   └── blacklist.json
@@ -373,7 +345,7 @@ GitHub Repository에는 Client가 실제 검증에 필요한 Certificate, Blackl
 - OAuth callback 및 세션을 안전하게 관리해야 한다.
 - 발급, 폐기, 활성화 API에 인증·인가를 적용해야 한다.
 - API rate limiting과 비정상 요청 탐지 기능을 제공해야 한다.
-- 민감한 Device Metadata와 내부 식별자는 필요 이상으로 노출하지 않는다.
+- 내부 식별자는 필요 이상으로 노출하지 않는다.
 - 로그에 Token, Private Key, 전체 인증서 원문 등 민감정보를 기록하지 않는다.
 
 ### 9.3 Client 변조 대응
@@ -381,7 +353,7 @@ GitHub Repository에는 Client가 실제 검증에 필요한 Certificate, Blackl
 - 검증 모듈은 응용 SW의 핵심 모듈과 함께 배포해야 한다.
 - 주요 기능 진입점에서 활성화 상태를 확인할 수 있어야 한다.
 - Client SDK는 검증 결과를 위조하기 어렵도록 방어적 설계를 적용해야 한다.
-- 단, 오프라인 Client는 완전한 역공학 방지가 불가능하므로 강한 통제가 필요한 제품은 L2/L3를 사용해야 한다.
+- 단, 오프라인 Client는 완전한 역공학 방지가 불가능하므로 강한 통제가 필요한 제품은 L2를 사용해야 한다.
 
 ## 10. 비기능 요구사항
 
@@ -395,12 +367,12 @@ GitHub Repository에는 Client가 실제 검증에 필요한 Certificate, Blackl
 
 - GitHub API 일시 장애에 대비한 재시도와 작업 상태 복구를 제공해야 한다.
 - L1은 LicenseHub 서버 장애와 무관하게 검증 가능해야 한다.
-- L2/L3의 서버 장애 시 허용 가능한 캐시 유효기간과 실패 정책을 정의해야 한다.
+- L2의 서버 장애 시 허용 가능한 캐시 유효기간과 실패 정책을 정의해야 한다.
 - 장애 및 복구 이벤트를 감사 로그에 남겨야 한다.
 
 ### 10.3 확장성
 
-- 인증 방식, 제품, 인증서 등급 및 Device 식별 방식을 추가할 수 있어야 한다.
+- 인증 방식, 제품 및 인증서 등급을 추가할 수 있어야 한다.
 - Public Repository를 별도로 추가할 수 있어야 한다.
 - 인증서 서명 알고리즘과 Public Key 버전을 교체할 수 있어야 한다.
 - 다중 제품 및 제품별 License 정책을 지원해야 한다.
@@ -417,12 +389,12 @@ GitHub Repository에는 Client가 실제 검증에 필요한 Certificate, Blackl
 
 - GitHub OAuth 로그인
 - 사용자 및 License 기본 관리
-- L1, L2, L3 인증서 생성 및 검증
+- L1, L2 인증서 생성 및 검증
 - Ed25519 기반 서명 또는 승인된 동등 알고리즘
 - GitHub App 기반 Private Repository 연동
 - Certificate, Blacklist, Manifest, Public Key 저장
 - Certificate 다운로드
-- L2/L3 Activation API
+- L2 Activation API
 - Blacklist 캐시
 - 기본 감사 로그
 - 운영 Private Key를 위한 외부 Secret/KMS 연동 지점
@@ -431,12 +403,11 @@ GitHub Repository에는 Client가 실제 검증에 필요한 Certificate, Blackl
 
 다음 조건을 만족하면 핵심 요구사항을 충족한 것으로 판단한다.
 
-1. 서명이 변경된 인증서는 L1/L2/L3 모두에서 활성화되지 않는다.
+1. 서명이 변경된 인증서는 L1/L2 모두에서 활성화되지 않는다.
 2. Metadata 또는 제품·버전 정보가 변경된 인증서는 검증에 실패한다.
 3. 만료된 인증서는 활성화되지 않는다.
 4. L1은 서버 연결 없이 유효한 인증서를 검증할 수 있다.
 5. L2는 Blacklist 또는 Revocation된 License를 활성화하지 않는다.
-6. L3는 등록되지 않은 Device에서 활성화되지 않는다.
 7. Client에는 GitHub 자격증명이 포함되지 않는다.
 8. Private Key는 Repository, DB, 소스 코드 및 로그에 저장되지 않는다.
 9. 인증서 발급과 GitHub 저장 실패 상태를 구분할 수 있다.
@@ -499,7 +470,7 @@ Application Z
 - 필수: Application ID, Target Language, Version, License Level, Owner,
   Expired Date, Meta Data
 - 선택: Product ID, Feature ID, Issue Date, License ID, Build ID, Platform,
-  Architecture, Maximum Instance, Device Binding, Application Public Key Hash
+  Architecture, Maximum Instance, Application Public Key Hash
 
 **LH-REQ-002 — Application ID는 라이선스의 핵심 식별자**
 Application ID는 단순 문자열(예: `APP-001`)만 비교해서는 안 된다.
@@ -760,12 +731,11 @@ Use-after-free 방지, Undefined Behavior 감소이며, 라이선스 보호 자�
 - Backend, Web UI 및 Client SDK의 기술 스택
 - 운영 환경과 배포 방식
 - 서명 알고리즘 및 키 회전 주기
-- Device ID 산출 대상 운영체제와 하드웨어 정보
-- L2/L3 서버 장애 시 허용할 Offline Grace Period
+- L2 서버 장애 시 허용할 Offline Grace Period
 - 인증서 체인의 최대 깊이와 권한 위임 규칙
 - Blacklist 캐시 만료 및 강제 갱신 정책
 - License 발급·재발급·양도 정책
-- 개인정보 및 Device Metadata 보관 기간
+- 개인정보 보관 기간
 - SLA, 예상 발급량 및 동시 활성화 요청량
 
 Application 보호(LH-REQ) 추가 확정 항목:

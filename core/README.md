@@ -53,7 +53,7 @@ cargo build --release
 
 ## 인증서 발행 예제
 
-Core API를 이용해 Device-Bound 인증서를 발행하는 예제를 실행할 수 있다.
+Core API를 이용해 Secure(L2) 인증서를 발행하는 예제를 실행할 수 있다.
 
 ```sh
 cargo run --example issue_certificate
@@ -61,10 +61,9 @@ cargo run --example issue_certificate
 
 예제는 다음을 수행한다.
 
-- L3 Device-Bound 인증서 생성
+- L2 Secure 인증서 생성
 - 제품, 버전, 유효기간 설정
 - 검증 서버 URL 설정
-- Device ID 해시 저장
 - `activation_policy`, `features`, `customer` Metadata 추가
 - 인증서 JSON 출력
 - 검증용 Public Key 출력

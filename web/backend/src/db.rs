@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS licenses (
     version TEXT NOT NULL,
     level INTEGER NOT NULL,
     holder TEXT NOT NULL,
-    device_id TEXT,
     expires_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',
     metadata TEXT,

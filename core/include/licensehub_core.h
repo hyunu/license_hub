@@ -102,10 +102,9 @@ enum lh_verification_code {
     LH_SERVER_REJECTED = 9,
     LH_REVOKED = 10,
     LH_BLACKLISTED = 11,
-    LH_DEVICE_MISMATCH = 12,
-    LH_CHAIN_INVALID = 13,
-    LH_CHAIN_TOO_DEEP = 14,
-    LH_POLICY_REJECTED = 15
+    LH_CHAIN_INVALID = 12,
+    LH_CHAIN_TOO_DEEP = 13,
+    LH_POLICY_REJECTED = 14
 };
 
 #endif

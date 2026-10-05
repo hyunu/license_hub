@@ -90,7 +90,6 @@ int main(int argc, char **argv) {
     printf("LicenseGuard C self-test (fixtures: %s)\n", base);
     fails += verify_pair(base, "l1.json", "context_l1.json", LH_VALID);
     fails += verify_pair(base, "l2.json", "context_l2.json", LH_VALID);
-    fails += verify_pair(base, "l3.json", "context_l3.json", LH_VALID);
     fails += verify_pair(base, "l1_tampered.json", "context_l1.json", LH_INVALID_SIGNATURE);
 
     /* LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화·검증 */

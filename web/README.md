@@ -76,7 +76,7 @@ GITHUB_APP_PRIVATE_KEY_PATH=/path/to/app.pem
 
 웹앱의 "GitHub 동기화" 화면에서 전체/인증서/Blacklist/공개키를 push한다.
 
-- 인증서 → `certificates/{core|secure|device-bound}/{license-id}.json`
+- 인증서 → `certificates/{core|secure}/{license-id}.json`
 - Blacklist → `blacklist/blacklist.json`
 - 공개키 → `keys/public-key.pem`
 
@@ -107,7 +107,7 @@ SW Client는 GitHub에 직접 접속하지 않고 **LicenseHub API(공개 엔드
 | `GET /api/claim/{license_id}` | 자신의 인증서 JSON 다운로드 | 없음 |
 | `GET /api/client/blacklist` | 폐기 목록 (GitHub blacklist.json 형식) | 없음 |
 | `GET /api/public-key` | 검증용 공개키 | 없음 |
-| `POST /api/verify` | L2/L3 서버 검증 (approved/rejected) | 없음 |
+| `POST /api/verify` | L2 서버 검증 (approved/rejected) | 없음 |
 
 Client 흐름:
 
@@ -115,7 +115,7 @@ Client 흐름:
 1. 인증서 다운로드 → GET /api/claim/{license_id}   (L1 오프라인 검증용)
 2. 공개키        → GET /api/public-key            (서명 검증)
 3. 폐기 확인     → GET /api/client/blacklist 주기적 캐시
-4. (L2/L3)       → POST /api/verify 서버 상태 확인
+4. (L2)          → POST /api/verify 서버 상태 확인
 ```
 
 GitHub 동기화 탭은 같은 데이터를 GitHub 저장소에 배포하는 채널이며, Client는
@@ -135,6 +135,6 @@ GitHub 동기화 탭은 같은 데이터를 GitHub 저장소에 배포하는 채
 | GET/POST | `/api/users` | 사용자 목록/추가 |
 | GET/POST/DELETE | `/api/blacklist[/{id}]` | Blacklist 관리 |
 | GET | `/api/audit` | 감사 로그 |
-| POST | `/api/verify` | L2/L3 서버 검증 (approved/rejected) |
+| POST | `/api/verify` | L2 서버 검증 (approved/rejected) |
 | POST | `/api/sync/*` | GitHub Repository 동기화 |
 | GET | `/api/public-key` | 공개키 (hex/PEM) |

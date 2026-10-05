@@ -4,7 +4,7 @@
 모두 **검증 기능만** 제공하며, 발급·개인키·GitHub 자격증명은 포함하지 않는다.
 
 - 공통 기반: `core/include/licensehub_core.h` 의 `lh_verify_certificate` (C ABI)
-- 공용 픽스처: `testdata/` (고정 키로 만든 L1/L2/L3 인증서, 공개키, Context)
+- 공용 픽스처: `testdata/` (고정 키로 만든 L1/L2 인증서, 공개키, Context)
 
 ## 지원 언어
 
@@ -17,7 +17,6 @@
 
 - L1 유효 인증서 → VALID
 - L2 유효 인증서 → VALID
-- L3 유효 인증서 → VALID
 - 변조된 인증서 → INVALID_SIGNATURE
 
 ## 사전 준비

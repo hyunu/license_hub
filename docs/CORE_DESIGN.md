@@ -57,7 +57,6 @@ Verifier
 ├── signature verification
 ├── metadata / expiration
 ├── blacklist / revocation result handling
-├── device binding
 └── certificate chain
 ```
 
@@ -71,7 +70,6 @@ Verifier
 - Private Key를 이용한 서명
 - Public Key를 이용한 서명 검증
 - Metadata 및 유효기간 검증
-- Device Binding 값 검증
 - 중첩 인증서와 인증서 체인 검증
 - 검증 결과 코드 반환
 
@@ -106,10 +104,6 @@ Blacklist와 서버 상태는 호출자가 가져와 Core에 검증 입력으로
   "server": {
     "verification_url": "https://license.example.com/v1/verify"
   },
-  "device": {
-    "binding_type": "device-id",
-    "value": "BASE64URL-ENCODED-HASH"
-  },
   "metadata": {
     "activation_policy": "..."
   },
@@ -125,10 +119,9 @@ Blacklist와 서버 상태는 호출자가 가져와 Core에 검증 입력으로
 - `schema_version`: 필수. 인증서 Schema 버전이다.
 - `certificate_id`: 필수. 개별 인증서 식별자다.
 - `license_id`: 필수. 내부 License와 연결되는 공개 식별자다.
-- `level`: `1`, `2`, `3` 중 하나다.
+- `level`: `1`, `2` 중 하나다.
 - `issued_at`, `expires_at`: RFC 3339 UTC 형식만 허용한다.
-- `server`: L2 이상에서 필수다.
-- `device`: L3에서 필수이며 L1/L2에서는 없어야 한다.
+- `server`: L2에서 필수다.
 - `children`: 중첩 인증서가 없으면 빈 배열이어야 한다.
 - `signature`: 모든 필드 검증 후 마지막에 검증한다.
 
@@ -170,7 +163,7 @@ canonicalization은 다음을 보장해야 한다.
 | 용도 | 응용SW 핵심로직 방어 | 응용SW 활성화 / 서브CA 승인 |
 
 - 케이스1 = X만, 케이스2 = Y만, 케이스3 = X+Y
-- X는 제품 정품성·코어 방어(제품 단위), Y는 설치/키 단위 활성화. "특정 설치/장치 전용"은 X만으로 불가능하며 L3 장치 바인딩이나 Y(설치 고유 키)와 조합해야 한다.
+- X는 제품 정품성·코어 방어(제품 단위), Y는 설치/키 단위 활성화. "특정 설치/장치 전용"은 X만으로 불가능하며 Y(설치 고유 키)와 조합해야 한다.
 
 **체인의 두 축**:
 1. **등급 체인** (`Certificate.children`): 응용SW 활성화(2차) → 코어로직 활성화(1차). 자식 인증서 하나라도 실패하면 전체 실패(`ChainInvalid`) → 코어로직 차단. `max_chain_depth`(기본 3).
@@ -289,8 +282,6 @@ Level Policy
         |
 Server Status / Blacklist / Revocation
         |
-Device Binding
-        |
 Child Certificates
         |
 Activation Allowed
@@ -302,7 +293,6 @@ Activation Allowed
 - 검증 순서를 호출자가 임의로 생략할 수 없도록 단일 검증 API를 제공한다.
 - L1은 서버 상태 검증을 수행하지 않는다.
 - L2는 서버 검증 결과를 필수로 요구한다.
-- L3는 서버 검증과 Device Binding을 모두 요구한다.
 - 만료일은 로컬 시간 조작의 영향을 고려한 정책을 별도로 정의한다.
 - 실패 원인은 진단 가능해야 하지만 개인키, 내부 경로 및 Secret은 노출하지 않는다.
 
@@ -321,7 +311,6 @@ verification_context
 - 현재 시각
 - 제품 및 버전
 - `product_id`(프로젝트 고유값), `executable_name`(실행 파일/모듈 이름) — X 호스트 바인딩
-- 현재 Device Binding 값
 - 서버 검증 결과
 - Blacklist/Revocation 결과
 - 허용된 정책 및 최대 체인 깊이
@@ -343,7 +332,6 @@ SERVER_REQUIRED
 SERVER_REJECTED
 REVOKED
 BLACKLISTED
-DEVICE_MISMATCH
 CHAIN_INVALID
 CHAIN_TOO_DEEP
 POLICY_REJECTED
@@ -364,8 +352,6 @@ int lh_verify_certificate(
     size_t certificate_len,
     const uint8_t *public_key,
     size_t public_key_len,
-    const uint8_t *device_id,
-    size_t device_id_len,
     const uint8_t *context,
     size_t context_len,
     uint32_t *result_code
@@ -418,8 +404,7 @@ FFI 원칙:
 - 제품·버전 불일치
 - `product_id`(고유값) 불일치
 - `executable_name`/모듈 이름 불일치
-- L1/L2/L3별 필수 필드
-- Device 불일치
+- L1/L2별 필수 필드
 - Blacklist 및 Revocation 결과
 - 잘못된 Schema와 알고리즘
 - 최대 체인 깊이 및 순환 참조
@@ -432,10 +417,8 @@ FFI 원칙:
 test-vectors/
 ├── valid-l1.json
 ├── valid-l2.json
-├── valid-l3.json
 ├── invalid-signature.json
-├── expired.json
-└── device-mismatch.json
+└── expired.json
 ```
 
 Rust에서 발급한 인증서를 C 검증기가 동일하게 검증해야 한다.
@@ -464,8 +447,7 @@ Rust에서 발급한 인증서를 C 검증기가 동일하게 검증해야 한�
 ### Phase 2: 검증기
 
 - L1 검증 파이프라인 구현
-- L2/L3 검증 Context 구현
-- Device Binding 구현
+- L2 검증 Context 구현
 - 중첩 인증서 검증 구현
 - 오류 코드 고정
 
@@ -488,7 +470,6 @@ Rust에서 발급한 인증서를 C 검증기가 동일하게 검증해야 한�
 - Ed25519와 다른 알고리즘의 최종 선택
 - 인증서의 알 수 없는 필드 처리 정책
 - 인증서 최대 크기 및 중첩 최대 깊이
-- Device ID 생성 규칙과 OS별 구현
 - 서명 시점에 Private Key를 메모리에 유지하는 범위
 - 암호화 Private Key 파일의 포맷과 외부 Secret 공급 방식
 - C ABI의 초기 지원 운영체제 및 CPU 아키텍처

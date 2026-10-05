@@ -16,7 +16,6 @@ pub struct License {
     pub version: String,
     pub level: i64,
     pub holder: String,
-    pub device_id: Option<String>,
     pub expires_at: String,
     pub status: String,
     pub metadata: Option<String>,
@@ -26,7 +25,7 @@ pub struct License {
     pub application_public_key: Option<String>,
     /// Application 공개키에서 파생한 Application ID.
     pub application_id: Option<String>,
-    /// L2/L3에서 런타임에 라이선스 상태를 확인할 검증 서버 주소.
+    /// L2에서 런타임에 라이선스 상태를 확인할 검증 서버 주소.
     /// 발급 시 인증서에 서명되어 들어간다. L1은 없다.
     pub verification_url: Option<String>,
     pub created_at: String,
@@ -77,7 +76,6 @@ pub struct LicenseInput {
     pub level: i64,
     /// P의 Owner.
     pub holder: String,
-    pub device_id: Option<String>,
     pub expires_at: String,
     pub status: Option<String>,
     /// P의 Target Language (이미지 1.1). 비우면 "any".
@@ -86,8 +84,8 @@ pub struct LicenseInput {
     /// P를 암호화할 Application 공개키(AK2 = Z_Pub, PEM). 이미지 1.1의 AK2.
     #[serde(default)]
     pub application_public_key: Option<String>,
-    /// L2/L3에서 런타임에 라이선스 상태를 확인할 검증 서버 주소.
-    /// L2/L3면 필수, L1이면 비워야 한다.
+    /// L2에서 런타임에 라이선스 상태를 확인할 검증 서버 주소.
+    /// L2면 필수, L1이면 비워야 한다.
     #[serde(default)]
     pub verification_url: Option<String>,
     /// 사용자 메타정보(자유 텍스트)

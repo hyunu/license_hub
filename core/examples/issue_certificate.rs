@@ -1,4 +1,4 @@
-//! LicenseHub Core를 이용한 Device-Bound 인증서 발행 예제.
+//! LicenseHub Core를 이용한 Secure(L2) 인증서 발행 예제.
 //!
 //! 이 예제는 실행할 때마다 테스트용 키를 새로 생성한다. 운영 환경에서는
 //! Private Key를 파일, 환경변수 또는 Secret Manager에서 안전하게 로드하고
@@ -12,11 +12,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 발급 전용 프로세스가 안전하게 로드한 Private Key를 사용해야 한다.
     let issuer = Issuer::generate("license-signing-key-v1");
 
-    let request = CertificateRequest::new("LICENSE-2026-0001", 3, "DXi", "1.2.0")
+    let request = CertificateRequest::new("LICENSE-2026-0001", 2, "DXi", "1.2.0")
         .issued_at("2026-09-21T10:00:00Z")
         .expires_at("2027-09-21T10:00:00Z")
         .verification_url("https://license.example.com/v1/verify")
-        .device_id("example-device-id")
         .metadata(
             "activation_policy",
             json!({

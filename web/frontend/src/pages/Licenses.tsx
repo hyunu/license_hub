@@ -10,7 +10,6 @@ const EMPTY_FORM = {
   version: '1.0.0',
   level: '1',
   holder: '',
-  device_id: '',
   expires_at: '2027-01-01T00:00:00Z',
   metadata: '',
   target_language: 'cpp',
@@ -63,14 +62,13 @@ export function Licenses() {
         expires_at: form.expires_at,
       }
       if (form.license_id.trim()) body.license_id = form.license_id.trim()
-      if (form.device_id) body.device_id = form.device_id
       if (form.metadata.trim()) body.metadata = form.metadata.trim()
       if (form.target_language.trim()) body.target_language = form.target_language
       // 비우면 서버가 Application 키쌍을 생성한다. 채우면 앱이 가진 키로 암호화한다.
       if (form.application_public_key.trim()) body.application_public_key = form.application_public_key.trim()
-      // L2/L3에서 런타임에 라이선스 상태를 확인할 검증 서버 주소.
+      // L2에서 런타임에 라이선스 상태를 확인할 검증 서버 주소.
       // LicenseHub가 아니라 발급 시 지정한 라이선스별 서버 주소다.
-      if (Number(form.level) >= 2 && form.verification_url.trim()) {
+      if (Number(form.level) === 2 && form.verification_url.trim()) {
         body.verification_url = form.verification_url.trim()
       }
       const created = await api.createLicense(body)
@@ -216,10 +214,9 @@ export function Licenses() {
                   <select value={form.level} onChange={(e) => set('level', e.target.value)}>
                     <option value="1">1 — Core (오프라인)</option>
                     <option value="2">2 — Secure (서버)</option>
-                    <option value="3">3 — Device-Bound</option>
-                  </select>
+                                      </select>
                 </label>
-                {Number(form.level) >= 2 && (
+                {Number(form.level) === 2 && (
                   <label className="f wide"><span className="lbl">검증 서버 주소 <span className="req">*</span></span>
                     <input
                       type="url"
@@ -239,9 +236,6 @@ export function Licenses() {
                 </label>
                 <label className="f">만료일
                   <input type="datetime-local" value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
-                </label>
-                <label className="f">Device ID (등급 3)
-                  <input value={form.device_id} onChange={(e) => set('device_id', e.target.value)} />
                 </label>
                 <label className="f wide">메타정보
                   <input value={form.metadata} onChange={(e) => set('metadata', e.target.value)} placeholder="예: 고객사명, 계약번호" />
@@ -294,8 +288,6 @@ export function Licenses() {
                 <td className="mono muted">
                   {l.encrypted_license ? (
                     <span title={`key_id ${l.encrypted_license.key_id}`}>암호화</span>
-                  ) : l.level === 3 && l.device_id ? (
-                    'bound'
                   ) : l.certificates > 0 ? (
                     `${l.certificates}회`
                   ) : (
