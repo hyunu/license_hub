@@ -94,11 +94,9 @@ export function Licenses() {
         lang: res.target_language,
       })
       if (res.encrypted_license) {
-        ok(`LIC 발급됨 — AK2(Z_Pub)로 암호화된 ${lic.license_id}.lic.json`)
-      } else if (lic.application_public_key) {
-        ok(`인증서 ${res.certificate_id} 발급됨`)
+        ok(`발급됨 — ${lic.license_id}.lic.json`)
       } else {
-        ok(`인증서 ${res.certificate_id} 발급됨 — AK2 미등록이므로 암호화 LIC는 없습니다`)
+        ok(`인증서 ${res.certificate_id} 발급됨`)
       }
       load(filter)
     } catch (err) {
@@ -112,7 +110,7 @@ export function Licenses() {
       bad(
         lic.application_public_key
           ? `'${lic.license_id}'에 아직 발급된 LIC가 없습니다 — 먼저 발급하세요`
-          : `'${lic.license_id}'에 AK2(Z_Pub)가 없어 암호화 LIC를 만들 수 없습니다`,
+          : `'${lic.license_id}'에 Application 공개키가 없어 암호화된 라이선스를 만들 수 없습니다`,
       )
       return
     }
@@ -126,7 +124,7 @@ export function Licenses() {
 
   const viewLic = async (lic: License) => {
     if (!lic.encrypted_license) {
-      bad(`'${lic.license_id}'에 AK2(Z_Pub) 기반 LIC가 없습니다`)
+      bad(`'${lic.license_id}'에 Application 공개키가 없어 암호화된 라이선스를 만들 수 없습니다`)
       return
     }
     try {
@@ -190,11 +188,6 @@ export function Licenses() {
       </header>
 
       <div className="content">
-        <p className="muted small" style={{ margin: '0 0 12px' }}>
-          이미지 발급 흐름: P(Application ID · Target Language · Version · Level · Owner · 만료일 · Meta Data)를 LH_Pri로 서명한 뒤,
-          AK2(Z_Pub)로 암호화해 LIC로 저장합니다. Application ID 는 AK2 에서 자동 도출되므로 직접 입력하지 않습니다(RS-7).
-        </p>
-
         <div className="toolbar">
           <div className="left">
             <label className="f">
@@ -242,7 +235,7 @@ export function Licenses() {
                   ))}
                 </select>
               </label>
-              <label className="f wide"><span className="lbl">AK2 (Z_Pub) — Application 공개키 PEM</span>
+              <label className="f wide"><span className="lbl">Application 공개키 (PEM)</span>
                 <textarea
                   rows={3}
                   value={form.application_public_key}
@@ -286,14 +279,14 @@ export function Licenses() {
                 <td>L{l.level}</td>
                 <td className="mono small">{l.target_language ?? '—'}</td>
                 <td className="mono small" title={l.application_id ?? undefined}>
-                  {l.application_id ? `${l.application_id.slice(0, 12)}…` : <span className="muted">AK2 없음</span>}
+                  {l.application_id ? `${l.application_id.slice(0, 12)}…` : <span className="muted">미등록</span>}
                 </td>
                 <td>{l.holder}</td>
                 <td className="mono">{l.expires_at.slice(0, 10)}</td>
                 <td><span className={`status ${l.status}`}><span className="sq" />{l.status}</span></td>
                 <td className="mono muted">
                   {l.encrypted_license ? (
-                    <span title={`AK2 암호화 · key_id ${l.encrypted_license.key_id}`}>암호화</span>
+                    <span title={`key_id ${l.encrypted_license.key_id}`}>암호화</span>
                   ) : l.level === 3 && l.device_id ? (
                     'bound'
                   ) : l.certificates > 0 ? (
@@ -326,7 +319,7 @@ export function Licenses() {
           <section className="sec" style={{ marginTop: 22 }}>
             <div className="sec-head">
               <h3 className="sec-title">
-                {certView.lic ? '암호화된 LIC (EncryptedLicense)' : '서명 인증서 (X)'} — {certView.license}
+                {certView.lic ? '암호화된 라이선스 파일' : '발급된 인증서'} — {certView.license}
               </h3>
               <div className="actions">
                 {certView.lic && (
@@ -339,11 +332,11 @@ export function Licenses() {
                           certView.license,
                         )
                       } catch (err) {
-                        bad(err instanceof Error ? err.message : 'LIC download failed')
+                        bad(err instanceof Error ? err.message : '다운로드 실패')
                       }
                     }}
                   >
-                    LIC 내려받기
+                    다운로드
                   </button>
                 )}
                 <button className="btn small" onClick={() => setCertView(null)}>닫기</button>
@@ -352,8 +345,7 @@ export function Licenses() {
             {certView.lic ? (
               <>
                 <p className="muted small" style={{ margin: '0 0 8px' }}>
-                  P 원문은 ciphertext 안에만 존재하므로 Owner·만료일 등은 이 화면에서 보이지 않습니다.
-                  Application 은 AK1(Z_Pri)로 복호화한 뒤 X 내장 LK2로 서명을 검증합니다.
+                  이 파일은 암호화되어 있어 원본 정보가 노출되지 않습니다.
                 </p>
                 <pre className="jsonbox">{JSON.stringify(certView.lic, null, 2)}</pre>
               </>
