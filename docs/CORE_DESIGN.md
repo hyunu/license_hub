@@ -231,12 +231,12 @@ trait Signer {
 
 응용SW 핵심로직 방어(X) 용도의 신뢰 공개키는 평문 상수로 두지 않는다. `core/src/trusted.rs`가 32바이트 키를 4조각으로 쪼개 각 조각을 마스크(XOR)로 감싸고 저장 순서를 섞은 뒤, 사용 시점에만 재조립한다.
 
-- `trusted::trusted_public_key()`: 재조립 후 무결성 해시(`KEY_SHA256`)를 확인해 훼손 시 panic(fail closed)한다.
+- 내부 `trusted::trusted_public_key()`: 재조립 후 무결성 해시(`KEY_SHA256`)를 확인한다. 외부 ABI로 LK2를 반환하지 않는다.
 - `trusted::verify_trusted(cert, ctx)`: **키를 함수 밖으로 노출하지 않고** 재조립 → 검증 → 파기한다. X 케이스는 이 경로를 사용해 키가 검증 순간에만 메모리에 존재한다.
 - `Issuer::issue_x(AppIdentity)`: 응용SW 정체성(제품명·버전·product_id·executable_name)을 입력받아 X를 **K1 개인키로 서명**한다. 발급 직후 내장 K1 공개키로 자체 검증해, K1이 아닌 키로 발급하면 오류를 돌려준다.
-- 키 파기: 재조립 버퍼는 사용 직후 `zeroize`로 0으로 덮어쓴다. (`lh_trusted_public_key`/`lh_verify_trusted_certificate`도 동일)
+- 키 파기: 재조립 버퍼는 사용 직후 `zeroize`로 0으로 덮어쓴다. 외부에서 LK2를 추출하는 `lh_trusted_public_key` ABI는 제공하지 않는다.
 - `gen_trusted_key` 예제: 새 K1 키 쌍을 생성하거나 주어진 공개키로 분산 상수를 출력한다. 개인키는 라이선스 서버의 `LICENSEHUB_SIGNING_KEY`로 설정하며 저장소에 커밋하지 않는다.
-- C ABI: `lh_trusted_public_key` / `lh_verify_trusted_certificate` 로 외부 언어에서 X 검증을 제공한다.
+- C ABI: `lh_verify_trusted_certificate`와 `lh_decrypt_verify_trusted_license`로 LK2를 호출자에게 노출하지 않고 X 검증 및 LIC 검증을 제공한다.
 
 보안 한계: 재조립 후 검증 순간의 메모리 스냅샷에는 키가 잠깐 존재할 수 있어 동적 분석으로 추출 가능하다. 정적 분석·지속 보존을 막는 장치이며 절대적 보호는 아니다.
 
@@ -396,7 +396,7 @@ FFI 원칙:
 구현 현황:
 
 - 완료: Rust(`verify`/`verify_trusted`), C ABI(`lh_verify_certificate`,
-  `lh_verify_trusted_certificate`, `lh_trusted_public_key`), C/C++ 헤더,
+  `lh_verify_trusted_certificate`, `lh_decrypt_verify_trusted_license`), C/C++ 헤더,
   C#, Python, Node.js — `bindings/` 참고
 - 완료: K1 내장 신뢰 공개키(분산 저장·zeroize), 호스트 바인딩 검증
   (`product_id`/`executable_name`/모듈 이름)

@@ -56,6 +56,19 @@ int main(int argc, char **argv) {
         if (!pass) fails++;
     }
 
+    // 제품 경로는 내장 LK2를 사용하며, 별도 test issuer 서명은 거부한다.
+    {
+        auto env = read_file(base + "/envelope.json");
+        auto zkey = read_file(base + "/z_private_key.bin");
+        auto ctx = read_file(base + "/context_l1.json");
+        auto ctx_str = std::string(ctx.begin(), ctx.end());
+        auto result = licensehub::LicenseGuard::decrypt_verify_trusted(env, zkey, ctx_str);
+        bool pass = result.status == -3;
+        std::cout << "  embedded_lk2: status=" << result.status
+                  << (pass ? "  PASS (untrusted fixture rejected)" : "  FAIL") << "\n";
+        if (!pass) fails++;
+    }
+
     // LH-REQ-012: Challenge-Response 검증.
     {
         auto zpub = read_file(base + "/z_public_key.bin");

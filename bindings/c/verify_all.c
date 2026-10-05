@@ -120,6 +120,31 @@ int main(int argc, char **argv) {
         free(lhkey);
     }
 
+    /* X의 제품 경로는 내장 LK2만 신뢰한다. 외부 test issuer 서명은 거부해야 한다. */
+    {
+        size_t env_len = 0, zkey_len = 0, ctx_len = 0;
+        uint8_t *env = read_file_buf(base, "envelope.json", &env_len);
+        uint8_t *zkey = read_file_buf(base, "z_private_key.bin", &zkey_len);
+        uint8_t *ctx = read_file_buf(base, "context_l1.json", &ctx_len);
+        if (!env || !zkey || !ctx) {
+            free(env);
+            free(zkey);
+            free(ctx);
+            fails++;
+        } else {
+            uint32_t code = UINT32_MAX;
+            int32_t status = lh_decrypt_verify_trusted_license(
+                env, env_len, zkey, zkey_len, ctx, ctx_len, &code);
+            int pass = (status == -3);
+            printf("  %-18s status=%d  %s\n", "embedded_lk2",
+                   status, pass ? "PASS (untrusted fixture rejected)" : "FAIL");
+            if (!pass) fails++;
+        }
+        free(env);
+        free(zkey);
+        free(ctx);
+    }
+
     /* LH-REQ-012: Challenge-Response 검증 */
     {
         size_t zpub_len = 0, chal_len = 0, sig_len = 0;

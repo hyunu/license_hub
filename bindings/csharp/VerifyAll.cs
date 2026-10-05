@@ -45,6 +45,17 @@ internal static class Program
             if (!pass) fails++;
         }
 
+        // 제품 경로는 내장 LK2를 신뢰하고 별도 test issuer 서명은 거부한다.
+        {
+            VerifyResult trusted = LicenseGuard.DecryptVerifyTrusted(
+                File.ReadAllBytes(Path.Combine(baseDir, "envelope.json")),
+                File.ReadAllBytes(Path.Combine(baseDir, "z_private_key.bin")),
+                File.ReadAllBytes(Path.Combine(baseDir, "context_l1.json")));
+            bool pass = trusted.Status == -3;
+            Console.WriteLine($"  embedded_lk2: status={trusted.Status}  {(pass ? "PASS (untrusted fixture rejected)" : "FAIL")}");
+            if (!pass) fails++;
+        }
+
         // LH-REQ-012: Challenge-Response 검증.
         {
             int status = LicenseGuard.VerifyChallenge(

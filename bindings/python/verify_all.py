@@ -66,6 +66,19 @@ def main() -> int:
     if not pass_:
         fails += 1
 
+    # X가 외부에서 전달된 LH_Pub이 아닌 내장 LK2를 신뢰해야 한다.
+    # fixture는 의도적으로 별도 test issuer 키로 서명했으므로 제품 경로에서 거부한다.
+    trusted = guard.decrypt_verify_trusted(
+        (BASE / "envelope.json").read_bytes(),
+        (BASE / "z_private_key.bin").read_bytes(),
+        (BASE / "context_l1.json").read_bytes(),
+    )
+    pass_ = trusted.status == -3
+    print(f"  {'embedded_lk2':<18} status={trusted.status}  "
+          f"{'PASS (untrusted fixture rejected)' if pass_ else 'FAIL'}")
+    if not pass_:
+        fails += 1
+
     # LH-REQ-013: Application ID 파생 (SHA-256 → URL-safe Base64, 패딩 없음 43자).
     app_id = guard.application_id((BASE / "z_public_key.bin").read_bytes())
     pass_ = len(app_id) == 43

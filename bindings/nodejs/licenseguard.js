@@ -75,13 +75,13 @@ class LicenseGuard {
             'int',
             ['uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint32_t *']
         );
-        this._trustedKey = lib.func(
-            'lh_trusted_public_key',
-            'int',
-            ['uint8_t *', 'size_t *']
-        );
         this._decrypt = lib.func(
             'lh_decrypt_license',
+            'int',
+            ['uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint32_t *']
+        );
+        this._decryptTrusted = lib.func(
+            'lh_decrypt_verify_trusted_license',
             'int',
             ['uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint8_t *', 'size_t', 'uint32_t *']
         );
@@ -122,18 +122,6 @@ class LicenseGuard {
         return new VerifyResult(status, code[0]);
     }
 
-    // 코어 내장 K1 공개키(32바이트)를 재조립해 반환한다.
-    trustedPublicKey() {
-        const out = new Uint8Array(32);
-        const cap = new BigUint64Array(1);
-        cap[0] = 32n;
-        const status = this._trustedKey(out, cap);
-        if (status !== 0 || Number(cap[0]) !== 32) {
-            throw new Error(`trusted_public_key failed: status=${status}`);
-        }
-        return Buffer.from(out);
-    }
-
     // LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화·검증한다.
     // status=0 성공, -1 인자 오류, -2 파싱/복호화 오류, -3 서명/App 불일치.
     decryptLicense(envelope, zPrivateKey, lhPublicKey) {
@@ -142,6 +130,18 @@ class LicenseGuard {
             envelope, envelope.length,
             zPrivateKey, zPrivateKey.length,
             lhPublicKey, lhPublicKey.length,
+            code
+        );
+        return new VerifyResult(status, code[0]);
+    }
+
+    // 제품 통합 경로: LH_Pub을 받지 않고 X 내장 LK2로 검증한다.
+    decryptVerifyTrusted(envelope, zPrivateKey, context) {
+        const code = new Uint32Array(1);
+        const status = this._decryptTrusted(
+            envelope, envelope.length,
+            zPrivateKey, zPrivateKey.length,
+            context, context.length,
             code
         );
         return new VerifyResult(status, code[0]);

@@ -20,12 +20,6 @@ int32_t lh_verify_certificate(
     uint32_t *result_code
 );
 
-/* Copies the embedded trusted public key (K1, reassembled at runtime) into
- * out. Returns 0 on success, -1 for invalid arguments (including a buffer
- * smaller than 32 bytes), or -2 if the scattered key integrity check fails.
- * On success out_len is set to 32. */
-int32_t lh_trusted_public_key(uint8_t *out, size_t *out_len);
-
 /* Verifies a certificate using the embedded trusted public key (K1), for the
  * X case (application core-logic protection). Same return convention as
  * lh_verify_certificate but no public_key argument. */
@@ -37,8 +31,10 @@ int32_t lh_verify_trusted_certificate(
     uint32_t *result_code
 );
 
-/* Decrypts an EncryptedLicense envelope with the application private key
- * (Z_Pri). Returns 0 when processed (result_code=0 on success), -1 for
+/* Low-level/tooling API: decrypts an EncryptedLicense envelope with Z_Pri and
+ * a caller-supplied LH_Pub. Do not use as the Application X entry point; the
+ * production path below enforces embedded LK2. Returns 0 when processed
+ * (result_code=0 on success), -1 for
  * invalid arguments, -2 for parse/decrypt failures, or -3 for envelope
  * signature/application mismatch. The envelope is validated with LH_Pub and
  * bound to the application key pair (LH-REQ-008, LH-REQ-012). */
@@ -49,6 +45,21 @@ int32_t lh_decrypt_license(
     size_t z_private_key_len,
     const uint8_t *lh_public_key,
     size_t lh_public_key_len,
+    uint32_t *result_code
+);
+
+/* Production application path: decrypts the envelope with Z_Pri and validates
+ * its LicenseHub signature and payload using the embedded LK2 (LH_Pub). The
+ * caller cannot supply/replace the trust anchor. result_code uses
+ * enum lh_verification_code; returns -1 for arguments, -2 for malformed or
+ * undecryptable envelopes, -3 for envelope-signature/application mismatch. */
+int32_t lh_decrypt_verify_trusted_license(
+    const uint8_t *envelope,
+    size_t envelope_len,
+    const uint8_t *z_private_key,
+    size_t z_private_key_len,
+    const uint8_t *context,
+    size_t context_len,
     uint32_t *result_code
 );
 

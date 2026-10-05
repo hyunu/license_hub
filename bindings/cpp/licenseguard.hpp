@@ -79,18 +79,6 @@ public:
         return {status, code};
     }
 
-    // 코어 내장 K1 공개키(32바이트)를 재조립해 반환한다.
-    static std::vector<uint8_t> trusted_public_key() {
-        std::vector<uint8_t> key(32);
-        size_t len = 32;
-        int32_t status = lh_trusted_public_key(key.data(), &len);
-        if (status != 0 || len != 32) {
-            throw std::runtime_error("trusted_public_key failed: status=" +
-                                     std::to_string(status));
-        }
-        return key;
-    }
-
     // LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화·검증한다.
     // status=0 성공, -1 인자 오류, -2 파싱/복호화 오류, -3 서명/App 불일치.
     static VerifyResult decrypt_license(const std::vector<uint8_t> &envelope,
@@ -102,6 +90,17 @@ public:
             z_private_key.data(), z_private_key.size(),
             lh_public_key.data(), lh_public_key.size(),
             &code);
+        return {status, code};
+    }
+
+    // 제품 통합 경로: X 내장 LK2로 LIC 서명과 복호화된 Payload를 검증한다.
+    static VerifyResult decrypt_verify_trusted(const std::vector<uint8_t> &envelope,
+                                               const std::vector<uint8_t> &z_private_key,
+                                               const std::string &context = "{}") {
+        uint32_t code = UINT32_MAX;
+        int32_t status = lh_decrypt_verify_trusted_license(
+            envelope.data(), envelope.size(), z_private_key.data(), z_private_key.size(),
+            reinterpret_cast<const uint8_t *>(context.data()), context.size(), &code);
         return {status, code};
     }
 

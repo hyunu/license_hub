@@ -50,7 +50,7 @@ const PARTS: [[u8; 8]; 4] = [
 /// 무결성 검증 실패 시 panic 한다. 평문 키 상수를 두지 않아 정적 분석으로
 /// 키를 직접 찾기 어렵다. 반환된 공개키는 호출자의 책임 하에 사용하며,
 /// 내부 임시 버퍼는 사용 직후 0으로 덮어쓴다.
-pub fn trusted_public_key() -> VerifyingKey {
+pub(crate) fn trusted_public_key() -> VerifyingKey {
     let mut key = reconstruct();
     let vk = VerifyingKey::from_bytes(&key).expect("trusted key is not a valid Ed25519 key");
     key.zeroize();

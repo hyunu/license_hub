@@ -125,11 +125,6 @@ class LicenseGuard:
         tfn.restype = ctypes.c_int32
         self._tfn = tfn
 
-        kfn = self._lib.lh_trusted_public_key
-        kfn.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
-        kfn.restype = ctypes.c_int32
-        self._kfn = kfn
-
         dfn = self._lib.lh_decrypt_license
         dfn.argtypes = [
             ctypes.c_void_p,
@@ -142,6 +137,19 @@ class LicenseGuard:
         ]
         dfn.restype = ctypes.c_int32
         self._dfn = dfn
+
+        tdfn = self._lib.lh_decrypt_verify_trusted_license
+        tdfn.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_uint32),
+        ]
+        tdfn.restype = ctypes.c_int32
+        self._tdfn = tdfn
 
         cfn = self._lib.lh_verify_challenge
         cfn.argtypes = [
@@ -186,15 +194,6 @@ class LicenseGuard:
         )
         return VerifyResult(status, code.value)
 
-    def trusted_public_key(self) -> bytes:
-        """코어 내장 K1 공개키(32바이트)를 재조립해 반환한다."""
-        out = ctypes.create_string_buffer(32)
-        cap = ctypes.c_size_t(32)
-        status = self._kfn(out, ctypes.byref(cap))
-        if status != 0 or cap.value != 32:
-            raise RuntimeError(f"trusted_public_key failed: status={status}")
-        return out.raw[:32]
-
     def decrypt_license(
         self, envelope: bytes, z_private_key: bytes, lh_public_key: bytes
     ) -> VerifyResult:
@@ -230,6 +229,25 @@ class LicenseGuard:
             chal_buf, len(challenge_json),
             sig_buf, len(signature_b64),
         )
+
+    def decrypt_verify_trusted(
+        self, envelope: bytes, z_private_key: bytes, context: bytes = b"{}"
+    ) -> VerifyResult:
+        """제품 통합 경로: X 내장 LK2로 LIC와 Payload를 검증한다.
+
+        LH_Pub은 호출자가 전달하지 못하므로 신뢰키 교체/주입이 불가능하다.
+        """
+        env_buf = ctypes.create_string_buffer(envelope)
+        zkey_buf = ctypes.create_string_buffer(z_private_key)
+        ctx_buf = ctypes.create_string_buffer(context)
+        code = ctypes.c_uint32(0xFFFFFFFF)
+        status = self._tdfn(
+            env_buf, len(envelope),
+            zkey_buf, len(z_private_key),
+            ctx_buf, len(context),
+            ctypes.byref(code),
+        )
+        return VerifyResult(status, code.value)
 
     def application_id(self, z_public_key: bytes) -> str:
         """Application 공개키에서 Application ID(SHA-256)를 파생한다(LH-REQ-013)."""

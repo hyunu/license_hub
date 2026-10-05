@@ -80,9 +80,6 @@ namespace LicenseHub
             out uint resultCode);
 
         [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
-        private static extern int lh_trusted_public_key(byte[] outKey, ref nuint outLen);
-
-        [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
         private static extern int lh_decrypt_license(
             byte[] envelope,
             nuint envelopeLen,
@@ -90,6 +87,16 @@ namespace LicenseHub
             nuint zPrivateKeyLen,
             byte[] lhPublicKey,
             nuint lhPublicKeyLen,
+            out uint resultCode);
+
+        [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int lh_decrypt_verify_trusted_license(
+            byte[] envelope,
+            nuint envelopeLen,
+            byte[] zPrivateKey,
+            nuint zPrivateKeyLen,
+            byte[] context,
+            nuint contextLen,
             out uint resultCode);
 
         [DllImport("licensehub_core", CallingConvention = CallingConvention.Cdecl)]
@@ -130,19 +137,6 @@ namespace LicenseHub
             return new VerifyResult(status, code);
         }
 
-        // 코어 내장 K1 공개키(32바이트)를 재조립해 반환한다.
-        public static byte[] TrustedPublicKey()
-        {
-            byte[] outKey = new byte[32];
-            nuint len = 32;
-            int status = lh_trusted_public_key(outKey, ref len);
-            if (status != 0 || len != 32)
-            {
-                throw new InvalidOperationException($"trusted_public_key failed: status={status}");
-            }
-            return outKey;
-        }
-
         // LH-REQ-008: 암호화 엔벨로프를 Z_Pri로 복호화·검증한다.
         // Status=0 성공, -1 인자 오류, -2 파싱/복호화 오류, -3 서명/App 불일치.
         public static VerifyResult DecryptLicense(byte[] envelope, byte[] zPrivateKey, byte[] lhPublicKey)
@@ -152,6 +146,18 @@ namespace LicenseHub
                 envelope, (nuint)envelope.Length,
                 zPrivateKey, (nuint)zPrivateKey.Length,
                 lhPublicKey, (nuint)lhPublicKey.Length,
+                out code);
+            return new VerifyResult(status, code);
+        }
+
+        // 제품 통합 경로: LH_Pub을 인자로 받지 않고 X 내장 LK2로 검증한다.
+        public static VerifyResult DecryptVerifyTrusted(byte[] envelope, byte[] zPrivateKey, byte[] context)
+        {
+            uint code;
+            int status = lh_decrypt_verify_trusted_license(
+                envelope, (nuint)envelope.Length,
+                zPrivateKey, (nuint)zPrivateKey.Length,
+                context, (nuint)context.Length,
                 out code);
             return new VerifyResult(status, code);
         }

@@ -44,6 +44,18 @@ for (const [certName, ctxName, expected] of checks) {
     if (!pass) fails++;
 }
 
+// 제품 경로는 내장 LK2를 신뢰하고 별도 test issuer 서명은 거부한다.
+{
+    const trusted = guard.decryptVerifyTrusted(
+        fs.readFileSync(path.join(base, 'envelope.json')),
+        fs.readFileSync(path.join(base, 'z_private_key.bin')),
+        fs.readFileSync(path.join(base, 'context_l1.json'))
+    );
+    const pass = trusted.status === -3;
+    console.log(`  ${'embedded_lk2'.padEnd(18)} status=${trusted.status}  ${pass ? 'PASS (untrusted fixture rejected)' : 'FAIL'}`);
+    if (!pass) fails++;
+}
+
 // LH-REQ-012: Challenge-Response 검증.
 {
     const status = guard.verifyChallenge(

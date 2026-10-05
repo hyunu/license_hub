@@ -77,8 +77,6 @@ pub struct EncryptedLicense {
     pub schema_version: u32,
     /// 서명(LH_Pri)에 사용한 License Hub 키 버전.
     pub key_id: String,
-    /// 암호화에 사용한 Application의 ID (`SHA-256(Z_Pub)`).
-    pub app_id: String,
     /// X25519 Ephemeral 공개키(URL-safe Base64). 복호화 시점 공유비밀 생성에 사용.
     pub ephemeral_public_key: String,
     /// AES-256-GCM 논스(URL-safe Base64).
@@ -105,6 +103,8 @@ pub enum EnvelopeError {
     ApplicationMismatch,
     #[error("serialization failed: {0}")]
     Serialization(String),
+    #[error("license validation failed: {0}")]
+    Verification(crate::VerificationError),
 }
 
 /// Ed25519 키의 X25519 몽고메리 포인트를 반환한다.
@@ -176,7 +176,6 @@ pub fn encrypt_license(
     let mut envelope = EncryptedLicense {
         schema_version: ENVELOPE_SCHEMA_VERSION,
         key_id: issuer.key_id().to_string(),
-        app_id: application_id(z_public_key),
         ephemeral_public_key: URL_SAFE_NO_PAD.encode(epk_mont.as_bytes()),
         nonce: URL_SAFE_NO_PAD.encode(nonce_bytes),
         ciphertext: URL_SAFE_NO_PAD.encode(&ciphertext),
@@ -191,10 +190,12 @@ pub fn encrypt_license(
     Ok(envelope)
 }
 
-/// Application 개인키(Z_Pri)로 엔벨로프를 검증·복호화한다.
+/// 암호화된 LIC를 Application 개인키(Z_Pri)로 복호화한다.
 ///
-/// 순서: 서명(LH_Pub) 검증 → App ID 일치 확인 → ECDH 공유비밀 생성 →
-/// AES-256-GCM 복호화 → 원문 인증서 복원.
+/// 순서: (호출자가 전달한) LH_Pub로 엔벨로프 서명 확인 → App ID 일치 확인
+/// → ECDH 공유비밀 생성 → AES-256-GCM 복호화 → 원문 인증서 복원.
+/// Application에서 사용하는 경로는 이 함수 대신 `decrypt_and_verify_trusted`
+/// 를 호출하여 X 내장 LK2로 서명·메타데이터를 검증해야 한다.
 /// - 인자: envelope: 암호화된 엔벨로프
 ///   z_private_key: Application 개인키(Z_Pri, Ed25519)
 ///   lh_public_key: License Hub 공개키(LH_Pub)
@@ -207,8 +208,8 @@ pub fn decrypt_license(
     if envelope.schema_version != ENVELOPE_SCHEMA_VERSION {
         return Err(EnvelopeError::InvalidFormat);
     }
-    // 1) 엔벨로프 서명 검증 (LH_Pub). Application이 전달받은 공개키를 그대로
-    //    쓰지 않고 내장된 LH_Pub으로 검증한다(LH-REQ-014).
+    // 1) 엔벨로프 서명 검증. 이 저수준 함수는 테스트/도구용이며,
+    //    Application 경로는 외부 키를 받지 않는 decrypt_and_verify_trusted를 쓴다.
     let payload = envelope_payload(envelope)?;
     let sig_bytes = URL_SAFE_NO_PAD
         .decode(&envelope.signature)
@@ -219,13 +220,8 @@ pub fn decrypt_license(
         .verify(&payload, &signature)
         .map_err(|_| EnvelopeError::InvalidSignature)?;
 
-    // 2) Application ID 일치 확인 (Z_Pri ↔ Z_Pub 쌍 증명의 첫 단계).
-    let derived_app_id = application_id(&z_private_key.verifying_key());
-    if derived_app_id != envelope.app_id {
-        return Err(EnvelopeError::ApplicationMismatch);
-    }
-
-    // 3) ECDH로 공유비밀 생성 → AES 키 파생 → 복호화.
+    // 2) ECDH로 공유비밀 생성 → AES 키 파생 → 복호화. 다른 Application의
+    //    개인키로는 GCM 인증이 실패하므로 평문 Application ID를 바깥에 둘 필요가 없다.
     let epk_bytes = URL_SAFE_NO_PAD
         .decode(&envelope.ephemeral_public_key)
         .map_err(|_| EnvelopeError::InvalidFormat)?;
@@ -240,25 +236,44 @@ pub fn decrypt_license(
     let nonce_bytes = URL_SAFE_NO_PAD
         .decode(&envelope.nonce)
         .map_err(|_| EnvelopeError::InvalidFormat)?;
+    if nonce_bytes.len() != NONCE_LEN {
+        return Err(EnvelopeError::InvalidFormat);
+    }
     let ciphertext = URL_SAFE_NO_PAD
         .decode(&envelope.ciphertext)
         .map_err(|_| EnvelopeError::InvalidFormat)?;
 
     let cipher = Aes256Gcm::new_from_slice(&aes_key[..])
         .map_err(|e| EnvelopeError::Decrypt(e.to_string()))?;
-    let plaintext = cipher
-        .decrypt(
-            Nonce::<Aes256Gcm>::from_slice(&nonce_bytes),
-            ciphertext.as_ref(),
-        )
-        .map_err(|_| EnvelopeError::Decrypt("AES-GCM authentication failed".into()))?;
+    let plaintext = Zeroizing::new(
+        cipher
+            .decrypt(
+                Nonce::<Aes256Gcm>::from_slice(&nonce_bytes),
+                ciphertext.as_ref(),
+            )
+            .map_err(|_| EnvelopeError::Decrypt("AES-GCM authentication failed".into()))?,
+    );
 
     let mut shared_bytes = shared.to_bytes();
     shared_bytes.zeroize();
     // Zeroizing은 Drop 시점에 plaintext를 0으로 덮어쓴다(LH-REQ-026).
-    let cert = serde_json::from_slice::<Certificate>(&plaintext)
+    let cert = serde_json::from_slice::<Certificate>(&plaintext[..])
         .map_err(|e| EnvelopeError::Decrypt(e.to_string()))?;
     Ok(cert)
+}
+
+/// Application의 정상 실행 경로: 복호화 후 X에 내장된 LK2로 LIC 서명과 P를 검증한다.
+///
+/// 호출자는 LH_Pub을 전달할 수 없다. X의 신뢰 앵커(`trusted`)만 사용하며,
+/// 검증 실패 시 활성화할 수 없도록 오류를 반환한다.
+pub fn decrypt_and_verify_trusted(
+    envelope: &EncryptedLicense,
+    z_private_key: &SigningKey,
+    context: &crate::VerificationContext,
+) -> Result<(), EnvelopeError> {
+    let lh_public_key = crate::trusted::trusted_public_key();
+    let certificate = decrypt_license(envelope, z_private_key, &lh_public_key)?;
+    crate::trusted::verify_trusted(&certificate, context).map_err(EnvelopeError::Verification)
 }
 
 /// 엔벨로프를 복호화한 뒤 인증서를 전체 검증한다.
@@ -482,7 +497,7 @@ pub unsafe extern "C" fn lh_decrypt_license(
             | EnvelopeError::Serialization(_)
             | EnvelopeError::Decrypt(_) => -2,
             EnvelopeError::InvalidSignature | EnvelopeError::ApplicationMismatch => -3,
-            EnvelopeError::Encrypt(_) => -2,
+            EnvelopeError::Encrypt(_) | EnvelopeError::Verification(_) => -2,
         })?;
         Ok::<Certificate, i32>(certificate)
     }));
@@ -490,6 +505,78 @@ pub unsafe extern "C" fn lh_decrypt_license(
         Ok(Ok(_certificate)) => {
             unsafe { *result_code = 0 };
             0
+        }
+        Ok(Err(status)) => status,
+        Err(_) => -2,
+    }
+}
+
+/// 제품에 통합하는 정상 검증 API.
+///
+/// Application은 LH_Pub을 인자로 전달하지 않는다. X 내부의 신뢰 LK2로
+/// 엔벨로프 서명과 복호화된 P를 검증한다. 결과 코드는 인증서 정책 검증
+/// 결과이며, 음수 반환은 인자·엔벨로프·복호화 오류다.
+///
+/// # Safety: 모든 비-NULL 포인터는 지정 길이만큼 유효한 읽기 버퍼이고,
+/// result_code는 u32를 쓸 수 있는 메모리를 가리켜야 한다.
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lh_decrypt_verify_trusted_license(
+    envelope: *const u8,
+    envelope_len: usize,
+    z_private_key: *const u8,
+    z_private_key_len: usize,
+    context: *const u8,
+    context_len: usize,
+    result_code: *mut u32,
+) -> i32 {
+    if result_code.is_null()
+        || envelope.is_null()
+        || z_private_key.is_null()
+        || (context_len > 0 && context.is_null())
+        || envelope_len > MAX_ENVELOPE_SIZE
+        || z_private_key_len != 32
+        || context_len > crate::MAX_CONTEXT_SIZE
+    {
+        return -1;
+    }
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        let envelope_bytes = unsafe { slice::from_raw_parts(envelope, envelope_len) };
+        let z_pri_bytes = Zeroizing::new(unsafe {
+            slice::from_raw_parts(z_private_key, z_private_key_len)
+                .try_into()
+                .map_err(|_| -2i32)?
+        });
+        let context_bytes = if context_len == 0 {
+            b"{}" as &[u8]
+        } else {
+            unsafe { slice::from_raw_parts(context, context_len) }
+        };
+        let parsed_envelope: EncryptedLicense =
+            serde_json::from_slice(envelope_bytes).map_err(|_| -2i32)?;
+        let ffi_context: crate::FfiVerificationContext =
+            serde_json::from_slice(context_bytes).map_err(|_| -2i32)?;
+        let z_pri = SigningKey::from_bytes(&z_pri_bytes);
+        Ok::<_, i32>((parsed_envelope, z_pri, ffi_context.into_context()))
+    }));
+
+    match outcome {
+        Ok(Ok((parsed_envelope, z_pri, context))) => {
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                decrypt_and_verify_trusted(&parsed_envelope, &z_pri, &context)
+            }));
+            match result {
+                Ok(Ok(())) => {
+                    unsafe { *result_code = 0 };
+                    0
+                }
+                Ok(Err(EnvelopeError::Verification(error))) => {
+                    unsafe { *result_code = crate::verification_code(Err(error)) };
+                    0
+                }
+                Ok(Err(EnvelopeError::InvalidSignature | EnvelopeError::ApplicationMismatch)) => -3,
+                Ok(Err(_)) | Err(_) => -2,
+            }
         }
         Ok(Err(status)) => status,
         Err(_) => -2,
@@ -573,6 +660,7 @@ pub unsafe extern "C" fn lh_application_id(
     }
     unsafe {
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, bytes.len());
+        *out.add(bytes.len()) = 0;
     }
     0
 }
@@ -618,11 +706,12 @@ mod tests {
         let cert = test_certificate(&issuer);
         let envelope = encrypt_license(&cert, &z_pub, &issuer).unwrap();
         let json = serde_json::to_string(&envelope).unwrap();
-        // 원문 식별 정보(Owner/Level/Product)가 암호문 밖에 없어야 한다(LH-REQ-005).
+        // 원문 식별 정보(Owner/Level/Product/Application ID)가 암호문 밖에 없어야 한다.
         assert!(!json.contains("DXi"));
         assert!(!json.contains("license-1"));
         assert!(!json.contains("\"level\":1"));
         assert!(!json.contains("expires_at"));
+        assert!(!json.contains("app_id"));
     }
 
     #[test]
@@ -632,19 +721,19 @@ mod tests {
         let cert = test_certificate(&issuer);
         let envelope = encrypt_license(&cert, &z_pub, &issuer).unwrap();
         let other_pri = SigningKey::from_bytes(&[99u8; 32]);
-        assert_eq!(
+        assert!(matches!(
             decrypt_license(&envelope, &other_pri, &issuer.verifying_key()),
-            Err(EnvelopeError::ApplicationMismatch)
-        );
+            Err(EnvelopeError::Decrypt(_))
+        ));
     }
 
     #[test]
-    fn tampered_envelope_signature_is_rejected() {
+    fn tampered_envelope_ciphertext_is_rejected_by_signature() {
         let issuer = test_issuer();
         let (z_pri, z_pub) = test_app_keys();
         let cert = test_certificate(&issuer);
         let mut envelope = encrypt_license(&cert, &z_pub, &issuer).unwrap();
-        envelope.app_id = "tampered".into();
+        envelope.ciphertext = "tampered".into();
         assert_eq!(
             decrypt_license(&envelope, &z_pri, &issuer.verifying_key()),
             Err(EnvelopeError::InvalidSignature)

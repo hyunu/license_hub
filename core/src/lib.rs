@@ -19,7 +19,6 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::slice;
 use thiserror::Error;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
-use zeroize::Zeroize;
 
 pub mod envelope;
 pub mod trusted;
@@ -143,7 +142,7 @@ const ALGORITHM: &str = "Ed25519";
 // (Metadata와 하위 인증서 포함)는 이 크기를 넘지 않는다. 제한을 두지 않으면
 // 공격자가 거대한 JSON을 전달해 호출 프로세스의 메모리를 고갈시킬 수 있다.
 const MAX_CERTIFICATE_SIZE: usize = 64 * 1024;
-const MAX_CONTEXT_SIZE: usize = 16 * 1024;
+pub(crate) const MAX_CONTEXT_SIZE: usize = 16 * 1024;
 
 /// LicenseHub가 발급하는 서명된 인증서.
 ///
@@ -923,7 +922,7 @@ fn random_id() -> String {
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct FfiVerificationContext {
+pub(crate) struct FfiVerificationContext {
     // C ABI에서는 포인터로 Rust 구조체를 노출하지 않고 JSON Context를
     // 받아 ABI를 단순하게 유지한다. 누락된 값은 검증 정책의 기본값을 쓴다.
     now: Option<String>,
@@ -946,7 +945,7 @@ impl FfiVerificationContext {
     // - 인자: self: 역직렬화된 FFI Context
     // - 리턴: VerificationContext 인스턴스
     //--------------------------------------------------------------------------------
-    fn into_context(self) -> VerificationContext {
+    pub(crate) fn into_context(self) -> VerificationContext {
         let server_status = match self.server_status.as_deref() {
             Some("approved") => Some(ServerStatus::Approved),
             Some("rejected") => Some(ServerStatus::Rejected),
@@ -1047,43 +1046,6 @@ pub unsafe extern "C" fn lh_verify_certificate(
 }
 
 //--------------------------------------------------------------------------------
-// 코어에 내장된 신뢰 공개키(K1, 분산 저장)를 재조립해 호출자 버퍼에 복사한다.
-//
-// X(설명 인증서) 검증용 신뢰 앵커다. 평문 키 상수를 두지 않으므로 정적 분석
-// 으로 키를 직접 찾기 어렵다.
-// - 인자: out: 32바이트를 기록할 출력 버퍼
-//         out_len: 입력 시 버퍼 용량, 반환 시 실제 기록 크기(32)
-// - 리턴: 0 성공 / -1 인자 오류(버퍼 부족 포함) / -2 무결성 실패
-//--------------------------------------------------------------------------------
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lh_trusted_public_key(out: *mut u8, out_len: *mut usize) -> i32 {
-    if out.is_null() || out_len.is_null() {
-        return -1;
-    }
-    let outcome = catch_unwind(AssertUnwindSafe(|| {
-        let mut key = trusted::trusted_public_key().to_bytes();
-        let capacity = unsafe { *out_len };
-        if capacity < key.len() {
-            key.zeroize();
-            unsafe { *out_len = key.len() };
-            return Err(-1i32);
-        }
-        unsafe {
-            std::ptr::copy_nonoverlapping(key.as_ptr(), out, key.len());
-            *out_len = key.len();
-        }
-        key.zeroize();
-        Ok::<(), i32>(())
-    }));
-    match outcome {
-        Ok(Ok(())) => 0,
-        Ok(Err(status)) => status,
-        Err(_) => -2,
-    }
-}
-
-//--------------------------------------------------------------------------------
 // 코어에 내장된 신뢰 공개키(K1)로 인증서(X)를 검증한다. 공개키를 인자로
 // 받지 않는 점만 `lh_verify_certificate`와 다르며, 응용SW 핵심로직 방어용이다.
 // - 인자: certificate: JSON 인증서 버퍼
@@ -1144,7 +1106,7 @@ pub unsafe extern "C" fn lh_verify_trusted_certificate(
 // - 인자: result: verify()의 검증 결과
 // - 리턴: u32 코드 (0=유효, 1~15=실패 사유)
 //--------------------------------------------------------------------------------
-fn verification_code(result: Result<(), VerificationError>) -> u32 {
+pub(crate) fn verification_code(result: Result<(), VerificationError>) -> u32 {
     // C, C#, Python 등의 호출자가 언어별 예외 문자열에 의존하지 않도록
     // 검증 결과를 안정적인 정수 코드로 변환한다. 이 값은 헤더 파일의
     // enum과 함께 버전 관리해야 한다.
