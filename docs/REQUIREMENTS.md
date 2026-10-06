@@ -642,11 +642,29 @@ APP-001용 License를 APP-002에 복사하면 반드시 실패해야 한다.
 
 ### 13.5.14 Y 핵심 로직 보호
 
-**LH-REQ-021 — Y는 검증 성공 후에만 활성화**
+**LH-REQ-021 — Y는 검증 성공 후에만 활성화 (Activation Token)**
+
 `if (LicenseValid()) return TRUE;` 같은 구조는 Patch에 취약하다.
 X가 검증 후 **짧은 수명의 Activation Token**을 발급하고, Y는 Token 없이는
 핵심 API를 실행하지 않는다. Token은 Application ID, Session ID, Feature,
 Expiration, Nonce에 바인딩한다.
+
+**사용 주체 (명확화)**
+Activation Token은 **응용SW(Z) 내부에서만 사용하는 프로세스 내(In-process)
+수단**이다. 외부 서버·파일·다른 응용SW가 사용하지 않는다.
+
+- **발급자**: X(LicenseGuard — 응용SW에 내장되는 검증 코어)가 라이선스 검증
+  성공 후 생성한다.
+- **소비자**: Y(보호 대상 핵심로직)가 핵심 API 실행 전에 Token 존재·유효성을
+  확인한다. Token 없이는 핵심 API를 실행하지 않는다.
+- **전달 경로**: X → Y (Z 내부). 저장·전송·외부 노출 대상이 아니다. 짧은
+  수명, 메모리 내 일시 보유.
+- **목적**: 검증(X)과 기능 게이트(Y)를 분리해, X의 검증 함수를 패치하는
+  것만으로는 핵심 기능이 열리지 않게 한다.
+
+> 구현 상태: 2026-10-06 세션에서 호출처·테스트·C ABI가 전무해 **코드에서
+> 제거됨**. 현재 `core`에 Activation Token 구현은 없다. 재도입 시 위 규약으로
+> X→Y 내부 전달을 구현한다.
 
 **LH-REQ-022 — DLL 단독 실행 방지**
 X/Y DLL을 다른 Application에서 직접 로딩해도 핵심 기능이 실행되지 않아야
@@ -712,7 +730,7 @@ Use-after-free 방지, Undefined Behavior 감소이며, 라이선스 보호 자�
 | RS-10 | License는 Application별 공개키에 암호학적으로 종속되어야 한다. |
 | RS-11 | Application Private Key는 일반 파일/소스코드에 평문으로 저장되지 않아야 한다. |
 | RS-12 | X는 License 검증뿐 아니라 Application이 해당 Private Key를 실제 보유하고 있음을 Challenge-Response로 검증해야 한다. |
-| RS-13 | Y의 핵심 기능은 License 검증 결과가 아닌 검증된 Activation Token이 있어야 실행되어야 한다. |
+| RS-13 | Y의 핵심 기능은 License 검증 결과 자체가 아닌, **X(LicenseGuard)가 검증 성공 후 발급한 Activation Token**(응용SW 내부 X→Y)이 있어야 실행한다. |
 | RS-14 | 동일한 License 파일을 다른 Application으로 복사하여 사용할 수 없어야 한다. |
 
 ### 13.5.22 가장 중요한 보완점
@@ -743,6 +761,6 @@ Application 보호(LH-REQ) 추가 확정 항목:
 - Application별 키쌍(Z_Pub/Z_Pri)의 발급·배포·폐기 절차
 - Z_Pri 저장 방식 (TPM / OS Key Store / 보호 저장소 중 선택)
 - Application ID 파생 규칙 (SHA-256(Public Key) 방식 채택 여부)
-- Activation Token 구조·수명·갱신 주기
+- Activation Token 구조·수명·갱신 주기, X→Y 내부 전달 경로(및 C ABI 노출 여부)
 - Challenge-Response 세부 규칙 (Nonce 크기, SessionInfo 구성)
 - X/Y 모듈의 난독화 수준과 LH_Pub 분산 저장 방식
