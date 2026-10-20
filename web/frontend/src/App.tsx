@@ -8,6 +8,7 @@ import { Users } from './pages/Users'
 import { Blacklist } from './pages/Blacklist'
 import { Audit } from './pages/Audit'
 import { Sync } from './pages/Sync'
+import { Guide } from './pages/Guide'
 
 function Protected() {
   const { token } = useAuth()
@@ -91,6 +92,17 @@ const NAV: Array<{ to: string; label: string; icon: ReactNode }> = [
       </Icon>
     ),
   },
+  {
+    to: '/guide',
+    label: '시스템 가이드',
+    icon: (
+      <Icon>
+        <path d="M8 4.2v7.6" />
+        <path d="M8 4.2C6.8 3.3 5.3 3 3.4 3v7.6c1.9 0 3.4.3 4.6 1.2" />
+        <path d="M8 4.2C9.2 3.3 10.7 3 12.6 3v7.6c-1.9 0-3.4.3-4.6 1.2" />
+      </Icon>
+    ),
+  },
 ]
 
 function Layout() {
@@ -164,6 +176,7 @@ export function App() {
               <Route path="users" element={<Users />} />
               <Route path="audit" element={<Audit />} />
               <Route path="sync" element={<Sync />} />
+              <Route path="guide" element={<Guide />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
