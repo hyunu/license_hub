@@ -59,13 +59,7 @@ fn main() {
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
+        .allow_methods(cors_allowed_methods())
         .allow_headers(Any);
 
     let api = Router::new()
@@ -160,4 +154,42 @@ fn seed_admin(conn: &rusqlite::Connection, config: &Config) {
         "Seeded admin user '{}' (password from LICENSEHUB_ADMIN_PASSWORD, default admin123)",
         config.admin_username
     );
+}
+
+/// 브라우저(프론트엔드)가 쓰는 HTTP 메서드 전체. CORS 허용 목록과 같아야 한다.
+///
+/// PATCH 가 빠지면 브라우저 프리플라이트에서 거부되어
+/// `PATCH /api/users/{id}`(계정 수정·비밀번호 변경)가 "failed to fetch" 로 실패한다.
+fn cors_allowed_methods() -> Vec<Method> {
+    vec![
+        Method::GET,
+        Method::POST,
+        Method::PUT,
+        Method::PATCH,
+        Method::DELETE,
+        Method::OPTIONS,
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cors_allows_every_method_the_frontend_uses() {
+        let allowed = cors_allowed_methods();
+        for method in [
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ] {
+            assert!(
+                allowed.contains(&method),
+                "{method} 가 CORS 허용 목록에 없습니다. 브라우저 요청이 failed to fetch 로 실패합니다"
+            );
+        }
+    }
 }
