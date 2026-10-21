@@ -45,6 +45,9 @@ TOKEN=$(tools/licensehub.sh login | jq -r .token)
 export LICENSEHUB_TOKEN=$TOKEN
 ```
 
+> 코딩 에이전트가 발급 절차를 **도구 호출**로 수행하려면 MCP 서버를 연결한다.
+> §10 "MCP로 연결하기"를 참고한다. 발급 흐름과 키 형식 규칙은 HTTP와 동일하다.
+
 ## 2. 발급 절차 (HTTP)
 
 ### 2.1 로그인
@@ -301,24 +304,227 @@ POST {verification_url}
 - `docs/openapi.yaml` — API 스펙
 - `core/include/licensehub_core.h` — C ABI 전체 시그니처와 검증 코드
 - `bindings/README.md` — 검증 모듈 바인딩
+- `tools/mcp/README.md` — MCP 서버 상세(클라이언트별 설정·원격 호스팅·문제 해결)
 - `docs/ARCHITECTURE.md`, `docs/CORE_DESIGN.md` — 설계 배경
 
 ## 10. MCP로 연결하기 (에이전트)
 
-`tools/mcp/licensehub-mcp.js`는 표준 MCP stdio 서버이므로 OpenCode뿐 아니라
-Cursor, Claude Desktop, VS Code 등 MCP를 지원하는 클라이언트에서 사용할 수 있다.
+HTTP API를 직접 호출하는 대신, 에이전트가 **MCP 도구 호출**로 라이선스를 발급·조회할 수 있다.
+`tools/mcp/licensehub-mcp.js`는 표준 MCP 서버이므로 OpenCode, Cursor, Claude Desktop,
+VS Code 등 MCP를 지원하는 모든 클라이언트에서 동작한다.
+
+| 방식 | 적합한 경우 |
+|---|---|
+| HTTP(`tools/licensehub.sh`) | 스크립트·자동화. 토큰과 요청을 직접 제어 |
+| MCP(stdio / 원격 HTTP) | 코딩 에이전트가 발급·조회·상태 확인을 도구로 수행 |
+
+> MCP 서버는 **같은 절차를 다른 인터페이스로 제공할 뿐**이다.
+> 발급 흐름(키쌍 → 생성 → 발급 → 내려받기)과 키 형식 규칙은 §2·§3과 동일하다.
+> 서버 구현·배포 상세는 `tools/mcp/README.md`를 참고한다.
+
+### 10.1 준비물
+
+§1의 `LICENSEHUB_URL`과 `LICENSEHUB_TOKEN`을 그대로 쓴다.
 
 ```sh
 export LICENSEHUB_URL=https://<백엔드주소>
 export LICENSEHUB_TOKEN=$(tools/licensehub.sh login | jq -r .token)
 ```
 
-- OpenCode(전역): `~/.config/opencode/opencode.jsonc`의 `mcp.servers`
-- Cursor: `.cursor/mcp.json` 또는 `~/.cursor/mcp.json`의 `mcpServers`
-- Claude Desktop: `claude_desktop_config.json`의 `mcpServers`
-- 전역/다른 프로젝트에서는 `command`/`args`에 **절대경로**를 쓴다.
-- 연결 확인: `opencode mcp list` (OpenCode), 클라이언트의 MCP 설정 화면
+- MCP 서버 실행에 **Node 18+**가 필요하다(`fetch` 사용).
+- 원격 모드에서는 서버가 관리자 자격증명으로 백엔드에 로그인하므로, 클라이언트에는
+  토큰 대신 **액세스 키**만 넣는다(§10.4).
 
-클라이언트별 예시와 문제 해결은 `tools/mcp/README.md`를 참고한다.
-원격(Streamable HTTP)은 `node tools/mcp/licensehub-mcp.js --http`로 실행하고 Caddy `/mcp` 뒤에 둔다.
-systemd/Caddy 예시는 `tools/mcp/deploy/`에 있다.
+### 10.2 도구 목록
+
+| 도구(원래 이름) | OpenCode 노출 이름 | 설명 |
+|---|---|---|
+| `generate_keypair` | `licensehub_generate_keypair` | App 키쌍(Ed25519) 로컬 생성. 개인키는 네트워크로 나가지 않음 |
+| `public_key` | `licensehub_public_key` | 발급 서버 공개키 조회 |
+| `list_licenses` | `licensehub_list_licenses` | 라이선스 목록 |
+| `create_license` | `licensehub_create_license` | 라이선스 생성 (공개키 생략 시 서버가 키쌍 생성) |
+| `issue_license` | `licensehub_issue_license` | 인증서 발급 + 암호화 라이선스 생성 |
+| `download_license` | `licensehub_download_license` | 암호화 라이선스 조회/파일 저장 |
+| `verify_license` | `licensehub_verify_license` | 서버 기준 라이선스 상태 확인(승인/거부) |
+
+- `verify_license`는 **LicenseHub 서버 기준 상태 확인**이다.
+  오프라인 암호문 검증(복호화·서명·자격 대조)은 응용 프로그램이 `core` C ABI로 수행한다.
+- 클라이언트마다 표기만 다르고(`licensehub_create_license` 등) 동작은 같다.
+
+### 10.3 로컬(stdio) 연결
+
+**OpenCode** — 프로젝트 `opencode.jsonc` 또는 전역 `~/.config/opencode/opencode.jsonc`의 `mcp.servers`:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "licensehub": {
+        "type": "local",
+        "command": ["node", "tools/mcp/licensehub-mcp.js"],
+        "environment": {
+          "LICENSEHUB_URL": "https://licensehub.example.com",
+          "LICENSEHUB_TOKEN": "{env:LICENSEHUB_TOKEN}"
+        }
+      }
+    }
+  }
+}
+```
+
+- `cwd`는 워크스페이스가 되므로 프로젝트 등록이면 `command`의 상대 경로가 그대로 동작한다.
+- **전역/다른 프로젝트**에서는 `command`/`args`에 **절대경로**를 넣어야 한다.
+- 비밀값은 파일에 쓰지 말고 `{env:NAME}`으로 주입한다.
+
+CLI로 등록:
+
+```sh
+opencode mcp add licensehub --global \
+  --env LICENSEHUB_URL="$LICENSEHUB_URL" \
+  --env 'LICENSEHUB_TOKEN={env:LICENSEHUB_TOKEN}' \
+  -- node /ABSOLUTE/PATH/license_hub/tools/mcp/licensehub-mcp.js
+```
+
+**Cursor** — `.cursor/mcp.json` 또는 `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "licensehub": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/license_hub/tools/mcp/licensehub-mcp.js"],
+      "env": {
+        "LICENSEHUB_URL": "https://licensehub.example.com",
+        "LICENSEHUB_TOKEN": "{env:LICENSEHUB_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+**Claude Desktop** — `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "licensehub": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/license_hub/tools/mcp/licensehub-mcp.js"],
+      "env": {
+        "LICENSEHUB_URL": "https://licensehub.example.com",
+        "LICENSEHUB_TOKEN": "{env:LICENSEHUB_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+- Cursor·Claude Desktop는 셸 환경변수를 물려받지 않을 수 있어 `env`에 값을 직접 넣는 편이 확실하다.
+  (비밀값이 들어가므로 이 파일은 저장소에 커밋하지 않는다.)
+- `node`를 못 찾으면 `command`에 절대경로(`which node` 결과)를 넣는다.
+- 클라이언트를 재시작해야 서버가 새로 뜬다.
+
+### 10.4 원격(Streamable HTTP) 연결
+
+백엔드와 같은 VM에 MCP를 사이드카로 두고 Caddy가 `/mcp`로 노출하는 구성이다.
+
+```text
+인터넷 ──https──▶ Caddy ──/mcp──▶ 127.0.0.1:8090  MCP HTTP
+                        └──/*───▶ 127.0.0.1:8080  LicenseHub 백엔드
+```
+
+서버 측 실행:
+
+```sh
+cd tools/mcp
+LICENSEHUB_URL=https://licensehub.example.com \
+MCP_PORT=8090 \
+node licensehub-mcp.js --http
+```
+
+| 변수 | 기본 | 설명 |
+|---|---|---|
+| `MCP_HOST` | `127.0.0.1` | 바인딩 주소(외부 직접 노출 금지) |
+| `MCP_PORT` | `8090` | 포트 |
+| `MCP_PATH` | `/mcp` | MCP 엔드포인트 경로 |
+| `MCP_REQUIRE_AUTH` | `1` | `0`이면 인증 생략(로컬 테스트 전용) |
+| `MCP_ACCESS_KEY` | — | 설정 시 클라이언트는 이 키로만 접근 |
+| `LICENSEHUB_ADMIN_USER` / `LICENSEHUB_ADMIN_PASSWORD` | — | 액세스 키 모드의 백엔드 로그인 계정 |
+
+- **패스스루**(기본): `MCP_ACCESS_KEY`가 없으면 클라이언트의 `Authorization: Bearer <백엔드 토큰>`을
+  그대로 백엔드에 전달한다.
+- **전용 액세스 키**(권장): `MCP_ACCESS_KEY`가 있으면 클라이언트는 이 키로만 접근하고,
+  서버는 관리자 자격증명으로 백엔드에 로그인해 토큰을 발급·캐시한다.
+  관리자 비밀번호는 서버 밖으로 나가지 않는다.
+
+클라이언트 설정 — OpenCode:
+
+```jsonc
+{
+  "mcp": {
+    "servers": {
+      "licensehub": {
+        "type": "remote",
+        "url": "https://licensehub.example.com/mcp",
+        "headers": { "Authorization": "Bearer {env:MCP_ACCESS_KEY}" }
+      }
+    }
+  }
+}
+```
+
+Cursor:
+
+```json
+{
+  "mcpServers": {
+    "licensehub": {
+      "url": "https://licensehub.example.com/mcp",
+      "headers": { "Authorization": "Bearer <access-key>" }
+    }
+  }
+}
+```
+
+엔드포인트: `POST /mcp`(JSON-RPC), `GET /healthz`(헬스체크), `GET`·`DELETE /mcp`는 405(SSE 미지원).
+
+### 10.5 연결 확인
+
+```sh
+opencode mcp list          # ✓ licensehub connected
+```
+
+에이전트에게 `licensehub_public_key`를 호출하게 해서 JSON이 오면 URL/토큰까지 정상이다.
+`licensehub_generate_keypair`는 네트워크가 필요 없어 URL 없이도 동작한다.
+
+직접 확인:
+
+```sh
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | node tools/mcp/licensehub-mcp.js
+```
+
+### 10.6 문제 해결
+
+| 증상 | 원인 / 해결 |
+|---|---|
+| `✗ licensehub failed` | `node` 또는 스크립트 경로 오류. 절대경로와 `node --check` 확인 |
+| `LICENSEHUB_URL 이 설정되지 않았습니다` | 클라이언트가 env를 못 물려받음. 같은 셸에서 export 후 재시작 |
+| `LICENSEHUB_TOKEN 이 설정되지 않았습니다` | 토큰 미주입. `{env:LICENSEHUB_TOKEN}` 또는 export 확인 |
+| `401: unauthorized` | 토큰 만료/오타. 다시 로그인 |
+| `401` (원격 모드) | 액세스 키 불일치. `MCP_ACCESS_KEY`와 클라이언트 값 확인 |
+| 데스크톱 앱에서 env 미적용 | 셸 프로필(`~/.zshrc`)에 export 하거나, 설정 파일에 URL을 직접 기입(토큰은 env 유지) |
+| `node`를 못 찾음 | `command`/`args`에 `which node` 결과의 절대경로 사용 |
+
+### 10.7 원격 모드 주의
+
+- `download_license`의 `save_path`는 **원격에서 비활성**이다(서버 파일시스템에 쓰지 않도록).
+  반환된 JSON을 클라이언트에서 저장한다.
+- `generate_keypair`는 서버에서 키를 만들어 네트워크로 반환하므로, 원격에서는
+  **클라이언트 측 생성**을 권장한다(예: `openssl genpkey -algorithm ED25519`).
+- SSE 스트림은 제공하지 않는다(스펙상 405 허용). 세션 ID도 발급하지 않는 무상태 서버다.
+- `App_Pri`(개인키)는 도구 출력에 포함될 수 있다. 로그·대화·저장소에 남기지 않고
+  파일/OS 보호 저장소에만 보관한다.

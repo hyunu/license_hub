@@ -177,3 +177,15 @@ OpenCode에서는 `<서버>_<도구>` 이름으로 노출된다(서버 이름이
 설정 예시(OpenCode V2 `mcp.servers`, Cursor/Claude Desktop `mcpServers`)는 `tools/mcp/README.md`에 있다.
 원격 호스팅은 `node tools/mcp/licensehub-mcp.js --http`(Streamable HTTP)로 실행하고 Caddy `/mcp` 뒤에 둔다.
 배포 예시는 `tools/mcp/deploy/`에 있다.
+
+연결 절차(준비물·클라이언트별 설정·연결 확인·문제 해결)는 `docs/INTEGRATION.md` §10 "MCP로 연결하기"에 있다.
+
+```sh
+export LICENSEHUB_URL=https://<백엔드주소>
+export LICENSEHUB_TOKEN=$(tools/licensehub.sh login | jq -r .token)
+```
+
+- 로컬(stdio): `mcp.servers.licensehub` → `command: ["node", "<경로>/tools/mcp/licensehub-mcp.js"]`
+- 원격(HTTP): `mcp.servers.licensehub` → `type: "remote"`, `url: "<백엔드주소>/mcp"`, `headers: { "Authorization": "Bearer <access-key>" }`
+- 전역/다른 프로젝트에서는 `command`/`args`에 **절대경로**를 쓴다.
+- 연결 확인: `opencode mcp list` → `licensehub connected`
