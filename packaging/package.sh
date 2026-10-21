@@ -41,7 +41,6 @@ cp "$PKG_DIR/c/verify_example.c" "$C_OUT/examples/"
 cp "$PKG_DIR/c/decrypt_verify_example.c" "$C_OUT/examples/"
 cp "$PKG_DIR/c/cmake/LicenseHubCoreConfig.cmake" "$C_OUT/share/cmake/LicenseHubCore/"
 cp "$PKG_DIR/c/cmake/LicenseHubCoreConfigVersion.cmake" "$C_OUT/share/cmake/LicenseHubCore/"
-
 for p in $PLATFORMS; do
     SRC="$CORE_DIR/dist/$p"
     mkdir -p "$C_OUT/lib/$p"
@@ -51,6 +50,14 @@ for p in $PLATFORMS; do
         fi
     done
 done
+
+# ---- 2b. 매니페스트 ----
+if command -v python3 >/dev/null 2>&1; then
+    printf '== Manifest ==\n'
+    python3 "$ROOT/tools/gen_core_manifest.py" \
+        --sdk "$C_OUT" --version "0.1.0" \
+        --out "$C_OUT/licensehub-core-manifest.json"
+fi
 
 # ---- 3. Rust 안내 ----
 printf '== Rust ==\n'

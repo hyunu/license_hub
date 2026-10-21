@@ -75,5 +75,12 @@ cp "$PACKAGING_DIR/cmake/LicenseHubCoreConfigVersion.cmake" "$CMAKE_DIR/"
 # 배포 산출물과 같은 형태(pkg-config)를 로컬에도 만든다.
 sh "$PACKAGING_DIR/make_pkgconfig.sh" "$KEY" "0.1.0" "$PLAT_LIB_DIR/pkgconfig"
 
+# 릴리스와 동일한 매니페스트를 만든다(에이전트가 읽는 계약).
+if command -v python3 >/dev/null 2>&1; then
+    python3 "$CORE_DIR/../tools/gen_core_manifest.py" \
+        --sdk "$DIST_DIR" --version "0.1.0" \
+        --out "$DIST_DIR/licensehub-core-manifest.json" >/dev/null
+fi
+
 printf 'Built LicenseHub Core for %s\n' "$KEY"
 printf 'Artifacts: %s\n' "$DIST_DIR"

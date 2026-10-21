@@ -200,6 +200,13 @@ jobs:
           VERSION="${{ github.event.inputs.version || github.ref_name }}"
           VERSION="${VERSION#v}"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+          python3 tools/gen_core_manifest.py \
+            --sdk dist/c --version "$VERSION" \
+            --repository "${{ github.repository }}" \
+            --out "licensehub-core-manifest.json" \
+            --also-inside-sdk
+
           (cd dist && zip -r "../licensehub-core-${VERSION}.zip" c >/dev/null)
 
       - name: Create release
@@ -209,6 +216,7 @@ jobs:
           name: LicenseHub Core v${{ env.VERSION }}
           files: |
             licensehub-core-${{ env.VERSION }}.zip
+            licensehub-core-manifest.json
             artifacts/wheel-*/*.whl
             artifacts/nuget/*.nupkg
           fail_on_unmatched_files: false
