@@ -225,6 +225,87 @@ const tools = [
 ];
 
 //--------------------------------------------------------------------------------
+// 에이전트용 절차 (MCP instructions / prompts / resources)
+//--------------------------------------------------------------------------------
+const INSTRUCTIONS = `LicenseHub = 응용 프로그램의 핵심 로직을 보호하기 위해, 발급 서버가 서명한 인증서를 앱 공개키로 암호화해 주는 시스템이다.
+사용자가 "LicenseHub로 핵심 로직을 보호해라"라고 하면 다음을 따른다.
+
+1) 값 확인: project_path, product, version, level(1=오프라인/2=온라인), holder, expires_at(RFC3339), platform. 없으면 사용자에게 묻는다.
+2) licensehub://integration 리소스를 읽거나 licensehub-integration 프롬프트로 전체 절차를 확인한다.
+3) 키쌍: generate_keypair 도구 또는 클라이언트 측 openssl로 Ed25519 생성. 원격에서는 클라이언트 측 생성을 권장.
+4) 발급: create_license -> issue_license(숫자 id) -> download_license. level=1은 verification_url 금지, level=2는 필수.
+5) 통합: 핵심 로직을 분리하고 lh_decrypt_verify_trusted_license(L1) 또는 ..._online(L2)로 검증.
+   rc==0 && code==LH_VALID 일 때만 활성화(fail-closed). PEM을 raw 32바이트로 변환해 전달.
+6) 테스트: 성공/실패(라이선스 없음·변조·만료·L2 다운) 경로를 모두 확인.
+
+금지: LH_Pri 취급, App_Pri 로그/커밋/채팅 노출, 검증 결과 상수 하드코딩, L2 연결 실패를 통과로 처리.`;
+
+const INTEGRATION_GUIDE = `# LicenseHub 통합 절차
+
+## 0. 개념
+LicenseHub는 발급 서버가 서명한 인증서를 응용 프로그램의 공개키로 암호화해 주는 시스템이다.
+응용 프로그램은 자기 개인키로 복호화 -> 서명 검증 -> 자격 대조를 통과할 때만 핵심 로직을 켠다(fail-closed).
+
+## 1. 입력 확인
+project_path, product, version, level(1|2), holder, expires_at(RFC3339), platform.
+값이 없으면 사용자에게 확인한다.
+
+## 2. 키쌍
+- generate_keypair 도구 또는 클라이언트 측 openssl로 Ed25519 키쌍을 만든다.
+- 원격에서는 클라이언트 측 생성을 권장한다.
+- App_Pub 는 SPKI PEM, App_Pri 는 raw 32바이트 seed.
+
+## 3. 발급 (MCP 도구)
+1) create_license { product, version, level, holder, expires_at, application_public_key }
+2) issue_license { id }   // 숫자 DB id (문자열 license_id 아님)
+3) download_license { id }  // 원격에서는 save_path 금지
+- level=1: verification_url 금지. level=2: verification_url 필수.
+
+## 4. 응용 프로그램 통합
+- 핵심 로직을 별도 모듈로 분리한다.
+- 시작 시 검증한다.
+  C ABI: lh_decrypt_verify_trusted_license(lic, len, app_pri_raw32, 32, context_json, ctx_len, &code)
+  L2:    lh_decrypt_verify_trusted_license_online(...)
+- rc==0 && code==LH_VALID 일 때만 활성화한다. 그 외는 모두 비활성.
+- context JSON 필드: now, product, version, product_id, executable_name, application_id, target_language, server_status("approved"|"rejected"), blacklisted, revoked.
+- PEM을 C ABI에 그대로 넘기지 말고 raw 32바이트로 변환한다.
+
+## 5. 검증/테스트
+- 성공 경로와 실패 경로(라이선스 없음/변조/만료/L2 서버 다운)를 모두 테스트한다.
+- 모든 실패에서 핵심 로직이 꺼져 있어야 한다.
+
+## 6. 금지
+- LH_Pri(발급 서버 서명 개인키) 취급 금지.
+- App_Pri 로그/커밋/채팅 노출 금지.
+- 검증 결과 상수 하드코딩 금지.
+- L2 연결 실패를 통과로 처리 금지.`;
+
+const prompts = [
+  {
+    name: 'licensehub-integration',
+    description: '응용 서비스의 핵심 로직을 LicenseHub로 보호하는 절차',
+    arguments: [
+      { name: 'project_path', description: '대상 프로젝트 경로', required: false },
+      { name: 'product', description: '제품명', required: false },
+      { name: 'version', description: '버전', required: false },
+      { name: 'level', description: '1=오프라인, 2=온라인', required: false },
+      { name: 'holder', description: '소유자', required: false },
+      { name: 'expires_at', description: '만료(RFC3339)', required: false },
+      { name: 'platform', description: '대상 플랫폼/언어', required: false },
+    ],
+  },
+];
+
+const resources = [
+  {
+    uri: 'licensehub://integration',
+    name: 'LicenseHub 통합 가이드',
+    description: '발급·키 형식·검증 통합·불변식',
+    mimeType: 'text/markdown',
+  },
+];
+
+//--------------------------------------------------------------------------------
 // 도구 실행
 //--------------------------------------------------------------------------------
 function generateKeypair() {
@@ -343,8 +424,9 @@ async function handleRpc(message, ctx) {
       id,
       result: {
         protocolVersion: (params && params.protocolVersion) || DEFAULT_PROTOCOL,
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, prompts: {}, resources: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+        instructions: INSTRUCTIONS,
       },
     };
   }
@@ -354,6 +436,45 @@ async function handleRpc(message, ctx) {
   if (method === 'ping') return { jsonrpc: '2.0', id, result: {} };
 
   if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools } };
+
+  if (method === 'prompts/list') return { jsonrpc: '2.0', id, result: { prompts } };
+
+  if (method === 'prompts/get') {
+    const name = params && params.name;
+    if (name !== 'licensehub-integration') {
+      return { jsonrpc: '2.0', id, error: { code: -32602, message: 'unknown prompt: ' + name } };
+    }
+    const args = (params && params.arguments) || {};
+    const lines = Object.entries(args).map(([k, v]) => '- ' + k + ': ' + v);
+    const text =
+      INTEGRATION_GUIDE + (lines.length ? '\n\n## 이번 작업 입력값\n' + lines.join('\n') : '');
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: {
+        description: 'LicenseHub 통합 절차',
+        messages: [{ role: 'user', content: { type: 'text', text } }],
+      },
+    };
+  }
+
+  if (method === 'resources/list') return { jsonrpc: '2.0', id, result: { resources } };
+
+  if (method === 'resources/templates/list') {
+    return { jsonrpc: '2.0', id, result: { resourceTemplates: [] } };
+  }
+
+  if (method === 'resources/read') {
+    const uri = params && params.uri;
+    if (uri !== 'licensehub://integration') {
+      return { jsonrpc: '2.0', id, error: { code: -32602, message: 'unknown resource: ' + uri } };
+    }
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: { contents: [{ uri, mimeType: 'text/markdown', text: INTEGRATION_GUIDE }] },
+    };
+  }
 
   if (method === 'tools/call') {
     const name = params && params.name;

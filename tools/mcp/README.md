@@ -22,6 +22,18 @@
 > `verify_license`는 **LicenseHub 서버 기준 상태 확인**이다.
 > 오프라인 암호문 검증(복호화·서명·자격 대조)은 응용 프로그램이 `core` C ABI로 수행한다.
 
+## 에이전트용 절차 제공
+
+MCP 서버는 연결 시점에 절차를 직접 제공한다. 별도 문서를 읽지 않아도 된다.
+
+- `initialize` 응답의 `instructions` — 핵심 절차·불변식 요약
+  (OpenCode는 이를 시스템 프롬프트에 추가한다)
+- `prompts/list` → `licensehub-integration`
+  - `prompts/get` 으로 project/product/version/level/holder/expires_at/platform 을 넘기면
+    입력값이 채워진 전체 절차를 반환
+- `resources/list` → `licensehub://integration`
+  - `resources/read` 로 전체 통합 가이드(markdown) 조회
+
 ## 환경변수
 
 | 변수 | 필수 | 설명 |
