@@ -302,6 +302,48 @@ code.inline {
 .guide .bullets li { margin: 4px 0; }
 .guide .doc-end { margin: 28px 0 8px; }
 
+/* 제목 */
+.guide h2 {
+  font-family: var(--serif); font-size: 18px; font-weight: 700;
+  margin: 32px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.guide h3 { font-size: 14px; font-weight: 700; margin: 22px 0 6px; color: var(--ink); }
+.guide p { margin: 8px 0; }
+
+/* 표 (보더를 실제로 보이게) */
+.guide .tbl {
+  width: 100%; border-collapse: collapse; margin: 12px 0 16px;
+  font-size: 13px; background: var(--panel);
+  border: 1px solid var(--line-strong);
+}
+.guide .tbl th {
+  text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  color: var(--ink); background: #ece6d8;
+  padding: 8px 11px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-strong);
+}
+.guide .tbl td {
+  padding: 8px 11px; vertical-align: top; line-height: 1.55;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.guide .tbl th:last-child,
+.guide .tbl td:last-child { border-right: 0; }
+.guide .tbl tr:last-child td { border-bottom: 0; }
+.guide .tbl strong { font-weight: 700; }
+.guide .tbl.dont th { color: var(--bad); border-bottom-color: var(--bad); }
+.guide .tbl.do th { color: var(--ok); border-bottom-color: var(--ok); }
+
+/* 칩 (항목 나열) */
+.guide .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
+.guide .chip {
+  font: 12px/1.2 var(--mono); padding: 5px 9px;
+  border: 1px solid var(--line-strong); border-left: 2px solid var(--accent);
+  border-radius: 2px; background: var(--panel); color: var(--ink);
+}
+
 /* 키 관리 칩 */
 .guide .keys {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 14px 0;
