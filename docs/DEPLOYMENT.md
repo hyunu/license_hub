@@ -227,6 +227,10 @@ curl -sS https://<도메인>/mcp -X POST \
 - `/mcp` 외 경로는 외부에 노출하지 않는다(`MCP_HOST=127.0.0.1`).
 - `generate_keypair` 출력(개인키)을 서버 로그에 남기지 않는다.
 
+배포 워크플로 `deploy-mcp.yml`은 GitHub 시크릿 `MCP_ACCESS_KEY`,
+`LICENSEHUB_ADMIN_USER`, `LICENSEHUB_ADMIN_PASSWORD`를 `/etc/licensehub/mcp.env`(640)에 주입한다.
+클라이언트는 `MCP_ACCESS_KEY`만 사용하고, 백엔드 호출은 서버가 관리자 계정으로 로그인해 수행한다.
+
 ---
 
 ## 3. 자주 겪는 장애 (원인·대응)

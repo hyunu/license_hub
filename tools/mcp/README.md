@@ -231,6 +231,17 @@ node licensehub-mcp.js --http
 | `MCP_PORT` | `8090` | 포트 |
 | `MCP_PATH` | `/mcp` | MCP 엔드포인트 경로 |
 | `MCP_REQUIRE_AUTH` | `1` | `0`이면 인증 생략(로컬 테스트 전용) |
+| `MCP_ACCESS_KEY` | — | 설정 시 클라이언트는 이 키로만 접근. 백엔드 호출은 서버 측 관리자 자격증명으로 로그인 |
+| `LICENSEHUB_ADMIN_USER` | — | `MCP_ACCESS_KEY` 모드의 백엔드 로그인 계정 |
+| `LICENSEHUB_ADMIN_PASSWORD` | — | 위 계정의 비밀번호 |
+
+### 인증 모드
+
+- **패스스루**(기본): `MCP_ACCESS_KEY`가 없으면 클라이언트의
+  `Authorization: Bearer <backend token>`을 그대로 백엔드에 전달한다.
+- **전용 액세스 키**(권장, 원격): `MCP_ACCESS_KEY`가 있으면 클라이언트는 이 키로만 접근하고,
+  서버는 `LICENSEHUB_ADMIN_USER/PASSWORD`로 백엔드에 로그인해 토큰을 발급·캐시한다.
+  관리자 비밀번호는 서버 밖으로 나가지 않는다.
 
 ### 엔드포인트
 
