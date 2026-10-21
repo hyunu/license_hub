@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "licensehub-licenseguard"
-version = "0.1.0"
+dynamic = ["version"]
 description = "LicenseHub LicenseGuard verification binding"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -12,6 +12,10 @@ license = { text = "MIT" }
 [tool.setuptools]
 packages = ["licensehub_licenseguard"]
 include-package-data = true
+zip-safe = false
+
+[tool.setuptools.dynamic]
+version = { attr = "licensehub_licenseguard.__version__" }
 
 [tool.setuptools.package-data]
 licensehub_licenseguard = ["native/*/*"]

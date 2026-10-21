@@ -5,8 +5,11 @@ set -eu
 #
 # 1) core/build.sh 로 네이티브 라이브러리 빌드
 # 2) C / Rust 배포 패키지를 distribute/ 아래에 생성
-#    - c/  : 헤더 + 정적/공유 라이브러리 (플랫폼별) + 예제
+#    - c/  : 헤더 + 정적/공유 라이브러리(플랫폼별) + pkg-config + CMake 설정 + 예제
 #    - rust/: 게시 안내
+#
+# 레이아웃은 릴리스 워크플로(.github/workflows/release-core.yml)가 만드는
+# C SDK 와 동일하다.
 #
 # 사용: ./package.sh
 
@@ -14,15 +17,6 @@ PKG_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$PKG_DIR/.." && pwd)
 DIST="$ROOT/distribute"
 CORE_DIR="$ROOT/core"
-
-lib_name() {
-    case "$1" in
-        macos-*) echo "liblicensehub_core.dylib" ;;
-        linux-*) echo "liblicensehub_core.so" ;;
-        windows-*) echo "licensehub_core.dll" ;;
-        *) printf 'UNKNOWN\n' >&2; exit 1 ;;
-    esac
-}
 
 # ---- 1. 네이티브 라이브러리 빌드 ----
 printf '== Native build ==\n'
@@ -41,12 +35,21 @@ printf 'Platforms available: %s\n\n' "$PLATFORMS"
 # ---- 2. C 패키지 ----
 printf '== C ==\n'
 C_OUT="$DIST/c"
-mkdir -p "$C_OUT/include" "$C_OUT/examples"
+mkdir -p "$C_OUT/include" "$C_OUT/examples" "$C_OUT/share/cmake/LicenseHubCore"
 cp "$CORE_DIR/include/licensehub_core.h" "$C_OUT/include/"
 cp "$PKG_DIR/c/verify_example.c" "$C_OUT/examples/"
+cp "$PKG_DIR/c/decrypt_verify_example.c" "$C_OUT/examples/"
+cp "$PKG_DIR/c/cmake/LicenseHubCoreConfig.cmake" "$C_OUT/share/cmake/LicenseHubCore/"
+cp "$PKG_DIR/c/cmake/LicenseHubCoreConfigVersion.cmake" "$C_OUT/share/cmake/LicenseHubCore/"
+
 for p in $PLATFORMS; do
+    SRC="$CORE_DIR/dist/$p"
     mkdir -p "$C_OUT/lib/$p"
-    cp "$CORE_DIR/dist/$p/lib/"* "$C_OUT/lib/$p/"
+    for kind in shared static pkgconfig; do
+        if [ -d "$SRC/lib/$p/$kind" ]; then
+            cp -r "$SRC/lib/$p/$kind" "$C_OUT/lib/$p/"
+        fi
+    done
 done
 
 # ---- 3. Rust 안내 ----
@@ -55,4 +58,4 @@ mkdir -p "$DIST/rust"
 cp "$PKG_DIR/rust/README.md" "$DIST/rust/"
 
 printf '\nDistribution packages created under: %s\n' "$DIST"
-find "$DIST" -maxdepth 2 -type f | sed "s|^$ROOT/||" | sort
+find "$DIST" -maxdepth 3 -type f | sed "s|^$ROOT/||" | sort

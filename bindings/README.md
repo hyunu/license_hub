@@ -39,9 +39,10 @@ cd core
 ```text
 core/dist/macos-arm64/
 ├── include/licensehub_core.h
-└── lib/
-    ├── liblicensehub_core.dylib   (macOS)
-    └── liblicensehub_core.a
+└── lib/macos-arm64/
+    ├── shared/liblicensehub_core.dylib
+    ├── static/liblicensehub_core.a
+    └── pkgconfig/licensehub_core.pc
 ```
 
 ## C 사용

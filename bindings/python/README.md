@@ -64,5 +64,5 @@ openssl pkey -in app_pri.pem -outform DER | tail -c 32 > app_pri.raw
 ```sh
 python build_wheel.py --platform macos-arm64 \
   --plat-name macosx_11_0_arm64 \
-  --lib ../../core/dist/macos-arm64/lib/liblicensehub_core.dylib --out dist
+  --lib ../../core/dist/macos-arm64/lib/macos-arm64/shared/liblicensehub_core.dylib --out dist
 ```

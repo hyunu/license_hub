@@ -47,5 +47,6 @@ distribute/
 
 ## 추가 플랫폼 지원
 
-`core/dist/<os>-<arch>/` 에 라이브러리를 추가하면(예: `cargo build --target`)
-다음 실행에서 해당 플랫폼도 패키지에 포함된다.
+`core/dist/<os>-<arch>/lib/<os>-<arch>/{shared,static}/` 에 라이브러리를
+추가하면(예: `cargo build --target`) 다음 실행에서 해당 플랫폼도 패키지에
+포함된다.

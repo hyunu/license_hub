@@ -20,7 +20,9 @@ import os
 import pathlib
 import platform
 
-__all__ = ["LicenseGuard", "VerificationCode", "VerifyResult"]
+__all__ = ["LicenseGuard", "VerificationCode", "VerifyResult", "__version__"]
+
+__version__ = "0.1.0"
 
 
 class VerificationCode:

@@ -1,0 +1,11 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=@LIBDIR@
+includedir=@INCLUDEDIR@
+
+Name: licensehub_core
+Description: LicenseHub LicenseGuard verification core (shared)
+URL: https://github.com/hyunu/license_hub
+Version: @VERSION@
+Libs: -L${libdir}/shared -llicensehub_core
+Cflags: -I${includedir}

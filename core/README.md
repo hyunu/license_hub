@@ -17,24 +17,40 @@ release 산출물을 다음 위치에 모은다.
 core/dist/{os}-{arch}/
 ├── include/
 │   └── licensehub_core.h
-└── lib/
-    ├── native shared library
-    └── native static library
+├── lib/{os}-{arch}/
+│   ├── shared/          native shared library
+│   ├── static/          native static library
+│   └── pkgconfig/       licensehub_core.pc, licensehub_core_static.pc
+└── share/cmake/
+    └── LicenseHubCore/  LicenseHubCoreConfig.cmake
 ```
 
 예시:
 
 ```text
-macOS:  core/dist/macos-arm64/lib/liblicensehub_core.dylib
-Linux:  core/dist/linux-x86_64/lib/liblicensehub_core.so
-Windows: core/dist/windows-x86_64/lib/licensehub_core.dll
+macOS:   core/dist/macos-arm64/lib/macos-arm64/shared/liblicensehub_core.dylib
+Linux:   core/dist/linux-x86_64/lib/linux-x86_64/shared/liblicensehub_core.so
+Windows: core/dist/windows-x86_64/lib/windows-x86_64/shared/licensehub_core.dll
 ```
 
-정적 라이브러리도 함께 생성된다.
+정적 라이브러리도 함께 생성된다. **우회 접점을 없애려면 정적 링크를 쓴다.**
 
 ```text
 macOS/Linux: liblicensehub_core.a
 Windows:     licensehub_core.lib
+```
+
+이 디렉터리는 릴리스되는 C SDK와 같은 레이아웃이라, 여기서 만든 빌드가
+릴리스 산출물에서도 그대로 동작한다.
+
+```sh
+# pkg-config
+export PKG_CONFIG_PATH=core/dist/macos-arm64/lib/macos-arm64/pkgconfig
+cc app.c $(pkg-config --cflags --libs --static licensehub_core_static)
+
+# CMake
+cmake -S . -B build -DCMAKE_PREFIX_PATH=core/dist/macos-arm64
+#   target_link_libraries(app PRIVATE LicenseHubCore::LicenseHubCoreStatic)
 ```
 
 Cargo는 `cdylib`와 `staticlib`의 확장자를 target OS에 맞춰 생성한다. 다른

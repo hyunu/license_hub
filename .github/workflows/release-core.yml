@@ -63,21 +63,54 @@ jobs:
       - name: Stage native library
         shell: bash
         run: |
-          mkdir -p "artifacts/native/${{ matrix.platform }}"
-          case "${{ matrix.platform }}" in
-            macos-*) cp core/target/release/liblicensehub_core.dylib "artifacts/native/${{ matrix.platform }}/" ;;
-            linux-*) cp core/target/release/liblicensehub_core.so "artifacts/native/${{ matrix.platform }}/" ;;
-            windows-*) cp core/target/release/licensehub_core.dll "artifacts/native/${{ matrix.platform }}/" ;;
+          set -euo pipefail
+          PLAT="${{ matrix.platform }}"
+          DEST="artifacts/native/$PLAT"
+          mkdir -p "$DEST/shared" "$DEST/static" "$DEST/pkgconfig"
+          case "$PLAT" in
+            macos-*)
+              cp core/target/release/liblicensehub_core.dylib "$DEST/shared/"
+              cp core/target/release/liblicensehub_core.a "$DEST/static/"
+              ;;
+            linux-*)
+              cp core/target/release/liblicensehub_core.so "$DEST/shared/"
+              cp core/target/release/liblicensehub_core.a "$DEST/static/"
+              ;;
+            windows-*)
+              cp core/target/release/licensehub_core.dll "$DEST/shared/"
+              # MSVC 정적 라이브러리. import lib(licensehub_core.dll.lib)과 이름이 겹치지
+              # 않도록 별칭을 붙인다.
+              cp core/target/release/licensehub_core.lib "$DEST/static/licensehub_core_static.lib"
+              ;;
           esac
-          cp core/include/licensehub_core.h "artifacts/native/${{ matrix.platform }}/"
+          cp core/include/licensehub_core.h "$DEST/"
+
+      - name: Strip artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAT="${{ matrix.platform }}"
+          DEST="artifacts/native/$PLAT"
+          sh tools/strip_artifact.sh "$DEST"/shared/* "$DEST"/static/*
+
+      - name: Generate pkg-config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAT="${{ matrix.platform }}"
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          sh packaging/c/make_pkgconfig.sh \
+            "$PLAT" "$VERSION" "artifacts/native/$PLAT/pkgconfig"
 
       - name: Build Python wheel
         shell: bash
         run: |
+          set -euo pipefail
           PY=python3
           command -v python3 >/dev/null 2>&1 || PY=python
           "$PY" -m pip install --upgrade pip wheel setuptools
-          LIB=$(find "artifacts/native/${{ matrix.platform }}" -type f \( -name '*.dylib' -o -name '*.so' -o -name '*.dll' \) | head -1)
+          LIB=$(find "artifacts/native/${{ matrix.platform }}/shared" -type f \( -name '*.dylib' -o -name '*.so' -o -name '*.dll' \) | head -1)
           "$PY" bindings/python/build_wheel.py \
             --platform "${{ matrix.platform }}" \
             --plat-name "${{ matrix.wheel_plat }}" \
@@ -113,11 +146,11 @@ jobs:
             mkdir -p "bindings/csharp/runtimes/$1/native"
             cp "$2" "bindings/csharp/runtimes/$1/native/"
           }
-          add win-x64 artifacts/native-windows-x86_64/licensehub_core.dll
-          add linux-x64 artifacts/native-linux-x86_64/liblicensehub_core.so
-          add linux-arm64 artifacts/native-linux-arm64/liblicensehub_core.so
-          add osx-x64 artifacts/native-macos-x86_64/liblicensehub_core.dylib
-          add osx-arm64 artifacts/native-macos-arm64/liblicensehub_core.dylib
+          add win-x64 artifacts/native-windows-x86_64/shared/licensehub_core.dll
+          add linux-x64 artifacts/native-linux-x86_64/shared/liblicensehub_core.so
+          add linux-arm64 artifacts/native-linux-arm64/shared/liblicensehub_core.so
+          add osx-x64 artifacts/native-macos-x86_64/shared/liblicensehub_core.dylib
+          add osx-arm64 artifacts/native-macos-arm64/shared/liblicensehub_core.dylib
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -145,15 +178,22 @@ jobs:
       - name: Assemble C SDK
         shell: bash
         run: |
-          mkdir -p dist/c/include dist/c/examples
+          set -euo pipefail
+          mkdir -p dist/c/include dist/c/examples dist/c/share/cmake/LicenseHubCore
           cp core/include/licensehub_core.h dist/c/include/
           cp packaging/c/verify_example.c dist/c/examples/
           cp packaging/c/decrypt_verify_example.c dist/c/examples/
+          cp packaging/c/cmake/LicenseHubCoreConfig.cmake dist/c/share/cmake/LicenseHubCore/
+          cp packaging/c/cmake/LicenseHubCoreConfigVersion.cmake dist/c/share/cmake/LicenseHubCore/
           for d in artifacts/native-*; do
             p=$(basename "$d")
             p=${p#native-}
             mkdir -p "dist/c/lib/$p"
-            cp "$d"/* "dist/c/lib/$p"/
+            cp -r "$d/shared" "dist/c/lib/$p/"
+            cp -r "$d/static" "dist/c/lib/$p/"
+            if [ -d "$d/pkgconfig" ] && [ -n "$(ls -A "$d/pkgconfig" 2>/dev/null)" ]; then
+              cp -r "$d/pkgconfig" "dist/c/lib/$p/"
+            fi
           done
           find dist/c/lib -name 'licensehub_core.h' -delete
 

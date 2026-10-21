@@ -4,6 +4,22 @@
  * 내장 LK2 로 서명·자격을 검증한다. 실패하면 핵심 로직을 켜지 않는다.
  *
  * 사용: decrypt_verify_example <license.json> <app_private_key.bin> <context.json>
+ *
+ * 권장 빌드 — **정적 링크**. 검증 코드가 응용 바이너리 안으로 들어가므로
+ * LD_PRELOAD / DYLD_INSERT_LIBRARIES / 라이브러리 파일 교체로 검증 함수를
+ * 가로챌 수 없다.
+ *
+ *   export PKG_CONFIG_PATH=<sdk>/c/lib/<platform>/pkgconfig
+ *   cc decrypt_verify_example.c \
+ *      $(pkg-config --cflags --libs --static licensehub_core_static) -o app
+ *
+ *   # CMake: target_link_libraries(app PRIVATE LicenseHubCore::LicenseHubCoreStatic)
+ *
+ * 빌드 후 확인 (아무것도 나오면 안 된다):
+ *   ldd app      | grep licensehub     # Linux
+ *   otool -L app | grep licensehub     # macOS
+ *
+ * 공유 링크: -L <sdk>/c/lib/<platform>/shared -llicensehub_core
  */
 
 #include <stdint.h>

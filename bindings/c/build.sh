@@ -23,15 +23,34 @@ case "$PLATFORM" in
     windows) LIB_NAME="licensehub_core.dll" ;;
 esac
 
-if [ ! -f "$DIST/lib/$LIB_NAME" ]; then
-    printf 'Native library not found: %s\n' "$DIST/lib/$LIB_NAME" >&2
+case "$PLATFORM" in
+    windows) STATIC_NAME="licensehub_core.lib" ;;
+    *) STATIC_NAME="liblicensehub_core.a" ;;
+esac
+
+SHARED_LIB="$DIST/lib/${PLATFORM}-${ARCH}/shared/$LIB_NAME"
+STATIC_LIB="$DIST/lib/${PLATFORM}-${ARCH}/static/$STATIC_NAME"
+
+if [ -f "$STATIC_LIB" ]; then
+    LIB_ARGS="$STATIC_LIB"
+    case "$PLATFORM" in
+        macos) LIB_ARGS="$LIB_ARGS -framework Security -framework CoreFoundation -liconv" ;;
+        linux) LIB_ARGS="$LIB_ARGS -lpthread -ldl -lm" ;;
+    esac
+    printf 'Linking statically: %s\n' "$STATIC_LIB"
+elif [ -f "$SHARED_LIB" ]; then
+    LIB_ARGS="$SHARED_LIB"
+    printf 'Linking shared: %s\n' "$SHARED_LIB"
+else
+    printf 'Native library not found under %s\n' "$DIST/lib" >&2
     printf 'Run core/build.sh first.\n' >&2
     exit 1
 fi
 
+# shellcheck disable=SC2086
 cc "$BIND_DIR/verify_all.c" \
     -I"$DIST/include" \
-    "$DIST/lib/$LIB_NAME" \
+    $LIB_ARGS \
     -o "$BIND_DIR/verify_all"
 
 "$BIND_DIR/verify_all" "$TESTDATA"
