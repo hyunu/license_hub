@@ -35,17 +35,23 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           API_BASE_URL: ${{ vars.API_BASE_URL }}
+          MCP_ACCESS_KEY: ${{ secrets.MCP_ACCESS_KEY }}
+          LICENSEHUB_ADMIN_USER: ${{ secrets.LICENSEHUB_ADMIN_USER }}
+          LICENSEHUB_ADMIN_PASSWORD: ${{ secrets.LICENSEHUB_ADMIN_PASSWORD }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: API_BASE_URL
+          envs: API_BASE_URL,MCP_ACCESS_KEY,LICENSEHUB_ADMIN_USER,LICENSEHUB_ADMIN_PASSWORD
           script: |
             set -euo pipefail
 
             BASE="${API_BASE_URL%/}"
             echo "LICENSEHUB_URL=${BASE}"
+            [ -n "${MCP_ACCESS_KEY:-}" ] || { echo "MCP_ACCESS_KEY secret missing"; exit 1; }
+            [ -n "${LICENSEHUB_ADMIN_USER:-}" ] || { echo "LICENSEHUB_ADMIN_USER secret missing"; exit 1; }
+            [ -n "${LICENSEHUB_ADMIN_PASSWORD:-}" ] || { echo "LICENSEHUB_ADMIN_PASSWORD secret missing"; exit 1; }
 
             # 1) 업로드 경로 정규화
             SRC="$HOME/licensehub-mcp"
@@ -97,6 +103,9 @@ jobs:
               echo "MCP_PORT=8090"
               echo "MCP_PATH=/mcp"
               echo "MCP_REQUIRE_AUTH=1"
+              echo "MCP_ACCESS_KEY=${MCP_ACCESS_KEY}"
+              echo "LICENSEHUB_ADMIN_USER=${LICENSEHUB_ADMIN_USER}"
+              echo "LICENSEHUB_ADMIN_PASSWORD=${LICENSEHUB_ADMIN_PASSWORD}"
             } | sudo tee /etc/licensehub/mcp.env >/dev/null
             sudo chown root:licensehub /etc/licensehub/mcp.env
             sudo chmod 640 /etc/licensehub/mcp.env
@@ -150,10 +159,23 @@ jobs:
 
             sudo systemctl reload caddy || sudo systemctl restart caddy
 
-            # 7) 외부 확인(정보용). 공인망 hairpin 이 막히면 실패로 처리하지 않는다.
+            # 7) 인증 포함 확인 (로컬 MCP → 백엔드 실제 호출)
             sleep 2
+            RESP="$(curl -s -m 15 -X POST http://127.0.0.1:8090/mcp \
+              -H "authorization: Bearer ${MCP_ACCESS_KEY}" \
+              -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_licenses","arguments":{}}}')"
+            if printf '%s' "$RESP" | grep -q '"isError":true'; then
+              echo "authenticated backend call failed"
+              printf '%s\n' "$RESP" | head -c 400
+              exit 1
+            fi
+            echo "authenticated backend call ok"
+
+            # 외부 확인(정보용). 공인망 hairpin 이 막히면 실패로 처리하지 않는다.
             CODE="$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST "${BASE}/mcp" \
+              -H "authorization: Bearer ${MCP_ACCESS_KEY}" \
               -H 'content-type: application/json' \
               -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' || true)"
-            echo "external /mcp status: ${CODE} (401 = 인증 필요, 정상)"
+            echo "external /mcp status: ${CODE} (200 정상)"
             echo "MCP DEPLOY OK"

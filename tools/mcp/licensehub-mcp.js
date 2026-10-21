@@ -53,6 +53,11 @@ const MCP_HOST = process.env.MCP_HOST || '127.0.0.1';
 const MCP_PORT = Number(process.env.MCP_PORT || 8090);
 const MCP_PATH = process.env.MCP_PATH || '/mcp';
 const REQUIRE_AUTH = (process.env.MCP_REQUIRE_AUTH || '1') !== '0';
+// 클라이언트용 전용 액세스 키. 설정되면 이 키로 MCP 접근을 제한하고,
+// 백엔드 호출은 서버 측 관리자 자격증명으로 로그인해 수행한다.
+const MCP_ACCESS_KEY = process.env.MCP_ACCESS_KEY || '';
+const ADMIN_USER = process.env.LICENSEHUB_ADMIN_USER || '';
+const ADMIN_PASS = process.env.LICENSEHUB_ADMIN_PASSWORD || '';
 
 function log(...args) {
   console.error('[licensehub-mcp]', ...args);
@@ -96,6 +101,38 @@ async function backend(method, path, options = {}) {
       throw new Error(res.status + ': ' + msg);
     }
     return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+//--------------------------------------------------------------------------------
+// 서버 측 인증 (관리자 자격증명으로 백엔드 토큰 발급·캐시)
+//--------------------------------------------------------------------------------
+let serverToken = null;
+
+async function serverSideToken() {
+  if (serverToken) return serverToken;
+  if (!ADMIN_USER || !ADMIN_PASS) {
+    throw new Error('서버 인증 정보(LICENSEHUB_ADMIN_USER/PASSWORD)가 설정되지 않았습니다');
+  }
+  if (!BASE) throw new Error('LICENSEHUB_URL 이 설정되지 않았습니다');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(BASE + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: ADMIN_USER, password: ADMIN_PASS }),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || !data.token) {
+      throw new Error('백엔드 로그인 실패 (관리자 자격증명 확인)');
+    }
+    serverToken = data.token;
+    return serverToken;
   } finally {
     clearTimeout(timer);
   }
@@ -226,7 +263,19 @@ const CREATE_FIELDS = [
 ];
 
 async function callTool(name, args, ctx) {
-  const token = ctx.token;
+  const callBackend = async (method, path, body) => {
+    const token = ctx.useServerAuth ? await serverSideToken() : ctx.token;
+    try {
+      return await backend(method, path, { body, auth: true, token });
+    } catch (e) {
+      // 서버 측 토큰이 만료됐으면 한 번 재로그인한다.
+      if (ctx.useServerAuth && /^401:/.test(e.message)) {
+        serverToken = null;
+        return backend(method, path, { body, auth: true, token: await serverSideToken() });
+      }
+      throw e;
+    }
+  };
 
   switch (name) {
     case 'generate_keypair':
@@ -236,20 +285,20 @@ async function callTool(name, args, ctx) {
       return backend('GET', '/api/public-key');
 
     case 'list_licenses':
-      return backend('GET', '/api/licenses', { auth: true, token });
+      return callBackend('GET', '/api/licenses');
 
     case 'create_license': {
       const payload = {};
       for (const key of CREATE_FIELDS) {
         if (args[key] !== undefined && args[key] !== null) payload[key] = args[key];
       }
-      return backend('POST', '/api/licenses', { body: payload, auth: true, token });
+      return callBackend('POST', '/api/licenses', payload);
     }
 
     case 'issue_license': {
       const id = Number(args.id);
       if (!Number.isInteger(id)) throw new Error('id 는 정수여야 합니다');
-      return backend('POST', '/api/licenses/' + id + '/issue', { auth: true, token });
+      return callBackend('POST', '/api/licenses/' + id + '/issue');
     }
 
     case 'download_license': {
@@ -260,7 +309,7 @@ async function callTool(name, args, ctx) {
           '원격(HTTP) 모드에서는 save_path를 쓸 수 없습니다. 반환된 JSON을 클라이언트에서 저장하세요.',
         );
       }
-      const data = await backend('GET', '/api/licenses/' + id + '/license', { auth: true, token });
+      const data = await callBackend('GET', '/api/licenses/' + id + '/license');
       if (args.save_path) {
         fs.writeFileSync(args.save_path, JSON.stringify(data, null, 2));
         return { saved: args.save_path, bytes: fs.statSync(args.save_path).size };
@@ -336,7 +385,11 @@ async function handleRpc(message, ctx) {
 //--------------------------------------------------------------------------------
 function startStdio() {
   if (!BASE) log('경고: LICENSEHUB_URL 이 없습니다. 네트워크 도구는 실패합니다.');
-  const ctx = { token: ENV_TOKEN, transport: 'stdio' };
+  const ctx = {
+    token: ENV_TOKEN,
+    transport: 'stdio',
+    useServerAuth: Boolean(!ENV_TOKEN && ADMIN_USER && ADMIN_PASS),
+  };
   const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
   rl.on('line', (line) => {
     const trimmed = line.trim();
@@ -441,11 +494,20 @@ function startHttp() {
 
     const authHeader = req.headers['authorization'] || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    if (REQUIRE_AUTH && !token) {
+    const requireAuth = REQUIRE_AUTH || Boolean(MCP_ACCESS_KEY);
+    if (requireAuth && !token) {
       return sendJson(
         res,
         401,
         { jsonrpc: '2.0', error: { code: -32001, message: 'unauthorized: Bearer 토큰이 필요합니다' } },
+        { 'www-authenticate': 'Bearer' },
+      );
+    }
+    if (MCP_ACCESS_KEY && token !== MCP_ACCESS_KEY) {
+      return sendJson(
+        res,
+        401,
+        { jsonrpc: '2.0', error: { code: -32001, message: 'unauthorized: 잘못된 액세스 키입니다' } },
         { 'www-authenticate': 'Bearer' },
       );
     }
@@ -464,7 +526,7 @@ function startHttp() {
       return sendJson(res, 400, { jsonrpc: '2.0', error: { code: -32700, message: 'parse error' } });
     }
 
-    const ctx = { token, transport: 'http' };
+    const ctx = { token, transport: 'http', useServerAuth: Boolean(MCP_ACCESS_KEY) };
 
     if (Array.isArray(message)) {
       const out = [];
