@@ -1,0 +1,159 @@
+name: Deploy MCP Server to Oracle
+
+# LicenseHub MCP HTTP 서버를 백엔드 VM에 사이드카로 배포한다.
+# - 수동: Actions 탭 → Deploy MCP Server to Oracle → Run workflow
+# - 자동: tools/mcp/** 변경 push 시
+#
+# 전제: 백엔드와 동일한 SSH 시크릿(SSH_HOST/USER/PORT/PRIVATE_KEY)을 사용한다.
+# Caddyfile 은 백업 후 검증하고, 실패하면 원복한다.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/mcp/**'
+      - '.github/workflows/deploy-mcp.yml'
+
+jobs:
+  deploy-mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload MCP server files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "tools/mcp/*"
+          target: "~/licensehub-mcp"
+
+      - name: Install and restart MCP over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: API_BASE_URL
+          script: |
+            set -euo pipefail
+
+            BASE="${API_BASE_URL%/}"
+            echo "LICENSEHUB_URL=${BASE}"
+
+            # 1) 업로드 경로 정규화
+            SRC="$HOME/licensehub-mcp"
+            if [ -f "$SRC/licensehub-mcp.js" ]; then
+              ROOT="$SRC"
+            elif [ -f "$SRC/tools/mcp/licensehub-mcp.js" ]; then
+              ROOT="$SRC/tools/mcp"
+            else
+              echo "MCP source not found"
+              find "$SRC" -maxdepth 3 -type f | head -50 || true
+              exit 1
+            fi
+            echo "source: $ROOT"
+
+            # 2) Node 18+ 확보
+            if ! command -v node >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update -y
+                sudo apt-get install -y nodejs
+              elif command -v dnf >/dev/null 2>&1; then
+                sudo dnf install -y nodejs
+              fi
+            fi
+            command -v node >/dev/null 2>&1 || { echo "node install failed"; exit 1; }
+            NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
+            if [ "$NODE_MAJOR" -lt 18 ]; then
+              echo "Node ${NODE_MAJOR} < 18 → NodeSource 20 설치"
+              if command -v apt-get >/dev/null 2>&1; then
+                curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+                sudo apt-get install -y nodejs
+              elif command -v dnf >/dev/null 2>&1; then
+                curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+                sudo dnf install -y nodejs
+              fi
+            fi
+            echo "node: $(node -v)"
+
+            # 3) 파일 배치
+            sudo mkdir -p /opt/licensehub/tools/mcp
+            sudo cp -r "$ROOT"/. /opt/licensehub/tools/mcp/
+            sudo chmod -R a+rX /opt/licensehub/tools/mcp
+
+            # 4) 서비스 계정 / 환경파일
+            sudo useradd --system --no-create-home --shell /usr/sbin/nologin licensehub 2>/dev/null || true
+            sudo install -d -o root -g licensehub -m 750 /etc/licensehub
+            {
+              echo "LICENSEHUB_URL=${BASE}"
+              echo "MCP_HOST=127.0.0.1"
+              echo "MCP_PORT=8090"
+              echo "MCP_PATH=/mcp"
+              echo "MCP_REQUIRE_AUTH=1"
+            } | sudo tee /etc/licensehub/mcp.env >/dev/null
+            sudo chown root:licensehub /etc/licensehub/mcp.env
+            sudo chmod 640 /etc/licensehub/mcp.env
+
+            # 5) systemd
+            sudo cp /opt/licensehub/tools/mcp/deploy/licensehub-mcp.service /etc/systemd/system/
+            sudo systemctl daemon-reload
+            sudo systemctl enable licensehub-mcp
+            sudo systemctl restart licensehub-mcp
+            sleep 2
+            if ! curl -sf http://127.0.0.1:8090/healthz >/dev/null; then
+              echo "MCP health check failed"
+              sudo journalctl -u licensehub-mcp --no-pager -n 40 || true
+              exit 1
+            fi
+            echo "MCP health ok"
+
+            # 6) Caddy /mcp 라우트 (idempotent, 백업·검증·원복)
+            if ! sudo grep -q 'handle /mcp\*' /etc/caddy/Caddyfile; then
+              BAK="/etc/caddy/Caddyfile.bak.$(date +%s)"
+              sudo cp /etc/caddy/Caddyfile "$BAK"
+
+              sudo awk '
+                /^[[:space:]]*reverse_proxy[[:space:]]+127\.0\.0\.1:8080[[:space:]]*$/ && !done {
+                  print "    handle /mcp* {";
+                  print "        reverse_proxy 127.0.0.1:8090";
+                  print "    }";
+                  print "    handle {";
+                  print "        reverse_proxy 127.0.0.1:8080";
+                  print "    }";
+                  done = 1;
+                  next;
+                }
+                { print }
+              ' /etc/caddy/Caddyfile | sudo tee /etc/caddy/Caddyfile.new >/dev/null
+              sudo mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+
+              if ! sudo grep -q 'handle /mcp\*' /etc/caddy/Caddyfile; then
+                sudo cp "$BAK" /etc/caddy/Caddyfile
+                echo "Caddyfile 패턴을 찾지 못해 원복했습니다"
+                exit 1
+              fi
+
+              CADDY_BIN="$(command -v caddy || echo /usr/local/bin/caddy)"
+              if ! sudo "$CADDY_BIN" validate --adapter caddyfile --config /etc/caddy/Caddyfile; then
+                sudo cp "$BAK" /etc/caddy/Caddyfile
+                echo "Caddyfile 검증 실패 → 원복"
+                exit 1
+              fi
+            fi
+
+            sudo systemctl reload caddy || sudo systemctl restart caddy
+
+            # 7) 외부 확인(정보용). 공인망 hairpin 이 막히면 실패로 처리하지 않는다.
+            sleep 2
+            CODE="$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST "${BASE}/mcp" \
+              -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' || true)"
+            echo "external /mcp status: ${CODE} (401 = 인증 필요, 정상)"
+            echo "MCP DEPLOY OK"
