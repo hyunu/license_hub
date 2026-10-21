@@ -204,6 +204,110 @@ Cursor는 `mcpServers` 형식을 쓴다.
 - 도구 이름은 클라이언트마다 표기만 다르고(`licensehub_create_license` 등) 동작은 같다.
 
 
+## 원격 호스팅 (Streamable HTTP)
+
+현재 백엔드 서버(VPS)에서 MCP를 함께 제공하는 권장 구성이다.
+Node 사이드카를 `127.0.0.1:8090`에 두고 Caddy가 `/mcp`로 노출한다.
+
+```text
+인터넷 ──https──▶ Caddy ──/mcp──▶ 127.0.0.1:8090  MCP HTTP
+                        └──/*───▶ 127.0.0.1:8080  LicenseHub 백엔드
+```
+
+### 실행
+
+```sh
+cd tools/mcp
+LICENSEHUB_URL=https://licensehub.example.com \
+MCP_PORT=8090 \
+node licensehub-mcp.js --http
+```
+
+### HTTP 모드 환경변수
+
+| 변수 | 기본 | 설명 |
+|---|---|---|
+| `MCP_HOST` | `127.0.0.1` | 바인딩 주소(외부 직접 노출 금지) |
+| `MCP_PORT` | `8090` | 포트 |
+| `MCP_PATH` | `/mcp` | MCP 엔드포인트 경로 |
+| `MCP_REQUIRE_AUTH` | `1` | `0`이면 인증 생략(로컬 테스트 전용) |
+
+### 엔드포인트
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `POST` | `/mcp` | JSON-RPC (initialize / tools/list / tools/call) |
+| `GET` | `/healthz` | 헬스체크 |
+| `GET`·`DELETE` | `/mcp` | 405 (SSE 미지원) |
+
+### 인증 (Bearer 패스스루)
+
+- 요청의 `Authorization: Bearer <token>`을 **그대로 LicenseHub 백엔드 호출에 전달**한다.
+- 서버에 관리자 토큰을 고정하지 않는다.
+- 토큰이 없으면 `401` + `WWW-Authenticate: Bearer`.
+
+### 배포 파일
+
+- `tools/mcp/deploy/licensehub-mcp.service` — systemd 유닛
+- `tools/mcp/deploy/Caddyfile.example` — `/mcp` 라우팅
+- `tools/mcp/deploy/mcp.env.example` — 환경변수 예시
+
+설치 예:
+
+```sh
+sudo cp -r tools/mcp /opt/licensehub/tools/mcp
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin licensehub || true
+sudo install -d -o root -g licensehub -m 750 /etc/licensehub
+sudo cp tools/mcp/deploy/mcp.env.example /etc/licensehub/mcp.env
+sudo editor /etc/licensehub/mcp.env
+sudo cp tools/mcp/deploy/licensehub-mcp.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now licensehub-mcp
+curl -sS http://127.0.0.1:8090/healthz
+```
+
+Caddy는 `Caddyfile.example`의 `handle /mcp*` 블록을 기존 사이트에 추가한 뒤
+`sudo systemctl reload caddy`.
+
+### 원격 클라이언트 설정
+
+OpenCode:
+
+```jsonc
+{
+  "mcp": {
+    "servers": {
+      "licensehub": {
+        "type": "remote",
+        "url": "https://licensehub.example.com/mcp",
+        "headers": { "Authorization": "Bearer {env:LICENSEHUB_TOKEN}" }
+      }
+    }
+  }
+}
+```
+
+Cursor (`.cursor/mcp.json` 또는 `~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "licensehub": {
+      "url": "https://licensehub.example.com/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+### 원격 모드 주의
+
+- `download_license`의 `save_path`는 **원격에서 비활성**이다(서버 파일시스템에 쓰지 않도록).
+  반환된 JSON을 클라이언트에서 저장한다.
+- `generate_keypair`는 서버에서 키를 만들어 네트워크로 반환하므로, 원격에서는
+  **클라이언트 측 생성**을 권장한다(예: `openssl genpkey -algorithm ED25519`).
+- SSE 스트림은 제공하지 않는다(스펙상 405 허용). 세션 ID도 발급하지 않는 무상태 서버다.
+
 ## 직접 실행·확인
 
 ```sh

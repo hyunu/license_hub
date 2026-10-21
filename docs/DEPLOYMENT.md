@@ -20,10 +20,12 @@ GitHub Pages (정적 웹앱, VITE_API_BASE_URL 사용)
   │  https://<공인IP>.sslip.io/api/*               ← 백엔드 API
   ▼
 Caddy (Oracle VM, :443, Let's Encrypt 자동 인증서)
-  │  reverse_proxy 127.0.0.1:8080
-  ▼
-licensehub-web-backend (Rust, systemd, :8080)
+  ├── /api/*, /*  ──▶ 127.0.0.1:8080  licensehub-web-backend (Rust, systemd)
+  └── /mcp*       ──▶ 127.0.0.1:8090  licensehub-mcp (Node, systemd, MCP HTTP)
 ```
+
+AI 에이전트(OpenCode, Cursor, Claude Desktop 등)는 ① 로컬 stdio MCP 또는
+② 위 `/mcp` 원격 엔드포인트로 LicenseHub를 도구 호출한다.
 
 배포 주체는 **전부 GitHub Actions**다. 로컬에서 SSH로 배포하지 않는다.
 
@@ -163,6 +165,67 @@ curl -sS https://<공인IP>.sslip.io/api/public-key   # HTTP 200 + JSON
 - `pages.yml`에 `workflow_dispatch` 추가 → Actions 탭에서 수동 재배포
 
 **검증:** `https://hyunu.github.io/license_hub/` 에서 로그인 동작 확인.
+
+---
+
+### 2-4. MCP 서버(사이드카) 배포
+
+AI 에이전트가 LicenseHub를 도구로 사용하기 위한 MCP 서버다. 백엔드와 같은 VM에 두고
+Caddy로 `/mcp`만 노출한다. (현재 GitHub Actions 자동 배포 대상이 아니므로 수동 배포)
+
+전제: VM에 **Node 18+**가 있어야 한다(`node -v`).
+
+```sh
+# 1) 코드 배치
+sudo mkdir -p /opt/licensehub/tools
+sudo cp -r tools/mcp /opt/licensehub/tools/mcp
+
+# 2) 서비스 계정/환경파일
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin licensehub || true
+sudo install -d -o root -g licensehub -m 750 /etc/licensehub
+sudo cp /opt/licensehub/tools/mcp/deploy/mcp.env.example /etc/licensehub/mcp.env
+sudo editor /etc/licensehub/mcp.env          # LICENSEHUB_URL 등
+
+# 3) systemd
+sudo cp /opt/licensehub/tools/mcp/deploy/licensehub-mcp.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now licensehub-mcp
+curl -sS http://127.0.0.1:8090/healthz
+```
+
+Caddy는 기존 사이트 블록에 `/mcp` 라우트를 추가한다
+(`tools/mcp/deploy/Caddyfile.example`).
+
+```caddyfile
+licensehub.example.com {
+    handle /mcp* {
+        reverse_proxy 127.0.0.1:8090
+    }
+    handle {
+        reverse_proxy 127.0.0.1:8080
+    }
+}
+```
+
+```sh
+sudo systemctl reload caddy
+```
+
+**검증 (외부 HTTPS):**
+
+```sh
+curl -sS https://<도메인>/mcp -X POST \
+  -H 'authorization: Bearer <token>' \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+**보안:**
+
+- `MCP_REQUIRE_AUTH=1`을 유지한다.
+- 토큰은 클라이언트가 `Authorization: Bearer`로 전달하고, 서버에 관리자 토큰을 고정하지 않는다.
+- `/mcp` 외 경로는 외부에 노출하지 않는다(`MCP_HOST=127.0.0.1`).
+- `generate_keypair` 출력(개인키)을 서버 로그에 남기지 않는다.
 
 ---
 

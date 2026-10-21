@@ -320,3 +320,5 @@ export LICENSEHUB_TOKEN=$(tools/licensehub.sh login | jq -r .token)
 - 연결 확인: `opencode mcp list` (OpenCode), 클라이언트의 MCP 설정 화면
 
 클라이언트별 예시와 문제 해결은 `tools/mcp/README.md`를 참고한다.
+원격(Streamable HTTP)은 `node tools/mcp/licensehub-mcp.js --http`로 실행하고 Caddy `/mcp` 뒤에 둔다.
+systemd/Caddy 예시는 `tools/mcp/deploy/`에 있다.

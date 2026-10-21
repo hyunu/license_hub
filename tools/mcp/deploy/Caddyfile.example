@@ -1,0 +1,13 @@
+# 기존 사이트 블록에 /mcp 만 추가한다.
+# (백엔드가 127.0.0.1:8080 에서 API와 프론트를 함께 제공하는 현재 구성 기준)
+licensehub.example.com {
+	# MCP Streamable HTTP
+	handle /mcp* {
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	# 기존 백엔드(API + 프론트)
+	handle {
+		reverse_proxy 127.0.0.1:8080
+	}
+}

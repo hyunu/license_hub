@@ -73,6 +73,12 @@ Developer / Administrator
    ├── manifest/
    └── keys/public-key.pem
 
+   AI Agent (OpenCode / Cursor / Claude Desktop)
+             |
+             | MCP (stdio 또는 Streamable HTTP /mcp)
+             v
+   LicenseHub MCP Server ──HTTPS/JSON──▶ LicenseHub Backend/API
+
    응용 SW (배포본)
    ├── 응용 SW 핵심 모듈
    └── LicenseGuard
@@ -209,6 +215,18 @@ GitHub에 저장하지 않는 관리·운영 데이터.
 - Internal Status
 - Audit Information
 - GitHub 동기화 상태
+
+### 5.7 LicenseHub MCP Server
+
+AI 에이전트가 LicenseHub를 도구 호출로 사용하기 위한 얇은 어댑터.
+
+- 전송: stdio(로컬) 및 Streamable HTTP(`/mcp`, 원격)
+- 도구: `generate_keypair`, `public_key`, `list_licenses`, `create_license`,
+  `issue_license`, `download_license`, `verify_license`
+- 인증: HTTP 모드에서 요청의 Bearer 토큰을 백엔드로 패스스루(서버에 고정하지 않음)
+- 배치: 백엔드와 같은 VM의 사이드카(`127.0.0.1:8090`), Caddy가 `/mcp`로 노출
+- 구현: `tools/mcp/` (Node 18+, 외부 의존성 없음)
+- 원칙: 발급·조회만 담당하고, 오프라인 암호문 검증은 응용 SW의 LicenseGuard(Core)가 수행
 
 ## 6. Core 사용 시각화
 

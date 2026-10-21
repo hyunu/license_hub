@@ -2,63 +2,74 @@
 'use strict';
 
 /*
- * LicenseHub MCP 서버 (stdio, 의존성 없음)
+ * LicenseHub MCP 서버
  *
- * 에이전트가 LicenseHub를 "도구 호출"로 직접 사용할 수 있게 한다.
- *  - generate_keypair : App 키쌍(Ed25519) 로컬 생성
+ * 두 가지 전송을 지원한다.
+ *  - stdio (기본): MCP 클라이언트가 프로세스를 직접 실행
+ *  - Streamable HTTP: `--http` 로 실행. 원격에서 URL로 접속
+ *
+ * 도구:
+ *  - generate_keypair : App 키쌍(Ed25519) 생성
  *  - public_key       : 발급 서버 공개키 조회
  *  - list_licenses    : 라이선스 목록
  *  - create_license   : 라이선스 생성
  *  - issue_license    : 인증서 발급 + 암호화 라이선스 생성
- *  - download_license : 암호화 라이선스 조회/저장
+ *  - download_license : 암호화 라이선스 조회 (원격에서는 save_path 금지)
  *  - verify_license   : 서버 기준 라이선스 상태 확인(L2)
  *
- * 환경변수:
+ * 공통 환경변수:
  *  - LICENSEHUB_URL         (필수) 예: https://licensehub.example.com
- *  - LICENSEHUB_TOKEN       (선택) 로그인으로 받은 Bearer 토큰
- *  - LICENSEHUB_VERIFY_KEY  (선택) L2 검증 키 (기본값은 core 상수와 동일)
+ *  - LICENSEHUB_TOKEN       (stdio) Bearer 토큰
+ *  - LICENSEHUB_VERIFY_KEY  (선택) L2 검증 키
  *
- * stdout 은 JSON-RPC 전용이다. 로그는 반드시 stderr 로 보낸다.
+ * HTTP 모드 환경변수:
+ *  - MCP_HOST         (기본 127.0.0.1)
+ *  - MCP_PORT         (기본 8090)
+ *  - MCP_PATH         (기본 /mcp)
+ *  - MCP_REQUIRE_AUTH (기본 1) 0이면 인증 생략(로컬 테스트 전용)
+ *
+ * HTTP 모드의 인증: 요청의 `Authorization: Bearer <token>` 을 그대로
+ * LicenseHub 백엔드 호출에 전달한다. 서버에 관리자 토큰을 고정하지 않는다.
  */
 
 const { generateKeyPairSync } = require('node:crypto');
 const fs = require('node:fs');
+const http = require('node:http');
 const readline = require('node:readline');
 
 const SERVER_NAME = 'licensehub';
 const SERVER_VERSION = '0.1.0';
 const DEFAULT_PROTOCOL = '2024-11-05';
+const MAX_BODY = 1_000_000;
 
 const BASE = (process.env.LICENSEHUB_URL || '').replace(/\/+$/, '');
-const TOKEN = process.env.LICENSEHUB_TOKEN || '';
-// core/src/lib.rs 의 VERIFY_API_KEY 와 동일한 고정 키. 필요하면 env 로 재정의한다.
+const ENV_TOKEN = process.env.LICENSEHUB_TOKEN || '';
 const VERIFY_KEY =
   process.env.LICENSEHUB_VERIFY_KEY || 'a9e54925-1acb-4214-8b2a-38616c561b96';
+
+const TRANSPORT =
+  process.argv.includes('--http') || process.env.MCP_TRANSPORT === 'http' ? 'http' : 'stdio';
+const MCP_HOST = process.env.MCP_HOST || '127.0.0.1';
+const MCP_PORT = Number(process.env.MCP_PORT || 8090);
+const MCP_PATH = process.env.MCP_PATH || '/mcp';
+const REQUIRE_AUTH = (process.env.MCP_REQUIRE_AUTH || '1') !== '0';
 
 function log(...args) {
   console.error('[licensehub-mcp]', ...args);
 }
 
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + '\n');
-}
-
-function ok(id, result) {
-  send({ jsonrpc: '2.0', id, result });
-}
-
-function rpcError(id, code, message) {
-  send({ jsonrpc: '2.0', id, error: { code, message } });
-}
-
-async function http(method, path, options = {}) {
+//--------------------------------------------------------------------------------
+// 백엔드 HTTP 호출
+//--------------------------------------------------------------------------------
+async function backend(method, path, options = {}) {
   if (!BASE) throw new Error('LICENSEHUB_URL 이 설정되지 않았습니다');
-  const { body, headers = {}, auth = false } = options;
+  const { body, headers = {}, auth = false, token } = options;
 
   const h = { ...headers };
   if (auth) {
-    if (!TOKEN) throw new Error('LICENSEHUB_TOKEN 이 설정되지 않았습니다');
-    h['Authorization'] = 'Bearer ' + TOKEN;
+    const bearer = token || ENV_TOKEN;
+    if (!bearer) throw new Error('인증 토큰이 없습니다 (Authorization 헤더 또는 LICENSEHUB_TOKEN)');
+    h['Authorization'] = 'Bearer ' + bearer;
   }
   if (body !== undefined) h['content-type'] = 'application/json';
 
@@ -90,12 +101,16 @@ async function http(method, path, options = {}) {
   }
 }
 
+//--------------------------------------------------------------------------------
+// 도구 정의
+//--------------------------------------------------------------------------------
 const tools = [
   {
     name: 'generate_keypair',
     description:
-      '응용 프로그램용 Ed25519 키쌍(App_Pub/App_Pri)을 로컬에서 생성한다. ' +
-      '개인키는 네트워크로 나가지 않는다. C ABI 에는 raw 32바이트(private_key_hex)를 넘긴다.',
+      '응용 프로그램용 Ed25519 키쌍(App_Pub/App_Pri)을 생성한다. ' +
+      'C ABI 에는 raw 32바이트(private_key_hex)를 넘긴다. ' +
+      '원격(HTTP)에서는 클라이언트 측에서 생성하는 편이 더 안전하다.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -147,12 +162,12 @@ const tools = [
   {
     name: 'download_license',
     description:
-      '암호화 라이선스(JSON)를 조회한다. save_path 를 주면 해당 경로에 파일로 저장한다.',
+      '암호화 라이선스(JSON)를 조회한다. save_path 는 로컬(stdio)에서만 허용된다.',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'integer' },
-        save_path: { type: 'string', description: '저장할 파일 경로(선택)' },
+        save_path: { type: 'string', description: '저장할 파일 경로(로컬 모드 전용)' },
       },
       required: ['id'],
       additionalProperties: false,
@@ -172,6 +187,9 @@ const tools = [
   },
 ];
 
+//--------------------------------------------------------------------------------
+// 도구 실행
+//--------------------------------------------------------------------------------
 function generateKeypair() {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const publicPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
@@ -207,35 +225,42 @@ const CREATE_FIELDS = [
   'metadata',
 ];
 
-async function callTool(name, args) {
+async function callTool(name, args, ctx) {
+  const token = ctx.token;
+
   switch (name) {
     case 'generate_keypair':
       return generateKeypair();
 
     case 'public_key':
-      return http('GET', '/api/public-key');
+      return backend('GET', '/api/public-key');
 
     case 'list_licenses':
-      return http('GET', '/api/licenses', { auth: true });
+      return backend('GET', '/api/licenses', { auth: true, token });
 
     case 'create_license': {
       const payload = {};
       for (const key of CREATE_FIELDS) {
         if (args[key] !== undefined && args[key] !== null) payload[key] = args[key];
       }
-      return http('POST', '/api/licenses', { body: payload, auth: true });
+      return backend('POST', '/api/licenses', { body: payload, auth: true, token });
     }
 
     case 'issue_license': {
       const id = Number(args.id);
       if (!Number.isInteger(id)) throw new Error('id 는 정수여야 합니다');
-      return http('POST', '/api/licenses/' + id + '/issue', { auth: true });
+      return backend('POST', '/api/licenses/' + id + '/issue', { auth: true, token });
     }
 
     case 'download_license': {
       const id = Number(args.id);
       if (!Number.isInteger(id)) throw new Error('id 는 정수여야 합니다');
-      const data = await http('GET', '/api/licenses/' + id + '/license', { auth: true });
+      if (args.save_path && ctx.transport === 'http') {
+        throw new Error(
+          '원격(HTTP) 모드에서는 save_path를 쓸 수 없습니다. 반환된 JSON을 클라이언트에서 저장하세요.',
+        );
+      }
+      const data = await backend('GET', '/api/licenses/' + id + '/license', { auth: true, token });
       if (args.save_path) {
         fs.writeFileSync(args.save_path, JSON.stringify(data, null, 2));
         return { saved: args.save_path, bytes: fs.statSync(args.save_path).size };
@@ -245,7 +270,7 @@ async function callTool(name, args) {
 
     case 'verify_license': {
       if (!args.license_id) throw new Error('license_id 가 필요합니다');
-      return http('POST', '/api/verify', {
+      return backend('POST', '/api/verify', {
         headers: { 'x-licensehub-key': VERIFY_KEY },
         body: { license_id: args.license_id },
       });
@@ -256,46 +281,62 @@ async function callTool(name, args) {
   }
 }
 
-async function dispatch(message) {
+//--------------------------------------------------------------------------------
+// JSON-RPC 처리 (stdio / HTTP 공용)
+//--------------------------------------------------------------------------------
+async function handleRpc(message, ctx) {
   const { id, method, params } = message || {};
-  if (method === undefined) return; // 응답 메시지는 무시
+  if (method === undefined || typeof method !== 'string') return null;
 
   if (method === 'initialize') {
-    return ok(id, {
-      protocolVersion: (params && params.protocolVersion) || DEFAULT_PROTOCOL,
-      capabilities: { tools: {} },
-      serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-    });
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: {
+        protocolVersion: (params && params.protocolVersion) || DEFAULT_PROTOCOL,
+        capabilities: { tools: {} },
+        serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+      },
+    };
   }
 
-  if (typeof method === 'string' && method.startsWith('notifications/')) return;
+  if (method.startsWith('notifications/')) return null;
 
-  if (method === 'ping') return ok(id, {});
+  if (method === 'ping') return { jsonrpc: '2.0', id, result: {} };
 
-  if (method === 'tools/list') return ok(id, { tools });
+  if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools } };
 
   if (method === 'tools/call') {
     const name = params && params.name;
     const args = (params && params.arguments) || {};
     try {
-      const result = await callTool(name, args);
+      const result = await callTool(name, args, ctx);
       const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-      return ok(id, { content: [{ type: 'text', text }] });
+      return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }] } };
     } catch (e) {
-      return ok(id, {
-        content: [{ type: 'text', text: '오류: ' + (e && e.message ? e.message : String(e)) }],
-        isError: true,
-      });
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [{ type: 'text', text: '오류: ' + (e && e.message ? e.message : String(e)) }],
+          isError: true,
+        },
+      };
     }
   }
 
   if (id !== undefined && id !== null) {
-    rpcError(id, -32601, 'method not found: ' + method);
+    return { jsonrpc: '2.0', id, error: { code: -32601, message: 'method not found: ' + method } };
   }
+  return null;
 }
 
-function main() {
+//--------------------------------------------------------------------------------
+// stdio 전송
+//--------------------------------------------------------------------------------
+function startStdio() {
   if (!BASE) log('경고: LICENSEHUB_URL 이 없습니다. 네트워크 도구는 실패합니다.');
+  const ctx = { token: ENV_TOKEN, transport: 'stdio' };
   const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
   rl.on('line', (line) => {
     const trimmed = line.trim();
@@ -308,9 +349,152 @@ function main() {
       return;
     }
     Promise.resolve()
-      .then(() => dispatch(message))
+      .then(() => handleRpc(message, ctx))
+      .then((response) => {
+        if (response) process.stdout.write(JSON.stringify(response) + '\n');
+      })
       .catch((e) => log('처리 오류:', e && e.message ? e.message : String(e)));
   });
 }
 
-main();
+//--------------------------------------------------------------------------------
+// Streamable HTTP 전송
+//--------------------------------------------------------------------------------
+function setCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'authorization, content-type, mcp-session-id, mcp-protocol-version',
+  );
+  res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
+}
+
+function sendJson(res, status, payload, extra = {}) {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', ...extra });
+  res.end(JSON.stringify(payload));
+}
+
+function readBody(req, limit = MAX_BODY) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error('요청 본문이 너무 큽니다'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+function startHttp() {
+  const server = http.createServer(async (req, res) => {
+    setCors(res);
+
+    let url;
+    try {
+      url = new URL(req.url, 'http://localhost');
+    } catch {
+      return sendJson(res, 400, { error: 'bad url' });
+    }
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (url.pathname === '/healthz') {
+      return sendJson(res, 200, {
+        ok: true,
+        server: SERVER_NAME,
+        version: SERVER_VERSION,
+        transport: 'http',
+        tools: tools.length,
+        auth: REQUIRE_AUTH,
+      });
+    }
+
+    if (url.pathname !== MCP_PATH) {
+      return sendJson(res, 404, { error: 'not found' });
+    }
+
+    // 원격에서는 SSE 스트림을 제공하지 않는다(MCP 스펙상 405 허용).
+    if (req.method === 'GET' || req.method === 'DELETE') {
+      return sendJson(
+        res,
+        405,
+        { jsonrpc: '2.0', error: { code: -32000, message: 'SSE stream is not supported' } },
+        { allow: 'POST, OPTIONS' },
+      );
+    }
+
+    if (req.method !== 'POST') {
+      return sendJson(res, 405, { error: 'method not allowed' }, { allow: 'POST, OPTIONS' });
+    }
+
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (REQUIRE_AUTH && !token) {
+      return sendJson(
+        res,
+        401,
+        { jsonrpc: '2.0', error: { code: -32001, message: 'unauthorized: Bearer 토큰이 필요합니다' } },
+        { 'www-authenticate': 'Bearer' },
+      );
+    }
+
+    let raw;
+    try {
+      raw = await readBody(req);
+    } catch (e) {
+      return sendJson(res, 413, { jsonrpc: '2.0', error: { code: -32600, message: e.message } });
+    }
+
+    let message;
+    try {
+      message = JSON.parse(raw);
+    } catch {
+      return sendJson(res, 400, { jsonrpc: '2.0', error: { code: -32700, message: 'parse error' } });
+    }
+
+    const ctx = { token, transport: 'http' };
+
+    if (Array.isArray(message)) {
+      const out = [];
+      for (const item of message) {
+        const response = await handleRpc(item, ctx);
+        if (response) out.push(response);
+      }
+      return sendJson(res, 200, out);
+    }
+
+    const response = await handleRpc(message, ctx);
+    if (response === null) {
+      res.writeHead(202);
+      res.end();
+      return;
+    }
+    return sendJson(res, 200, response);
+  });
+
+  server.listen(MCP_PORT, MCP_HOST, () => {
+    log(
+      `HTTP listening on http://${MCP_HOST}:${MCP_PORT}${MCP_PATH} ` +
+        `(auth ${REQUIRE_AUTH ? 'on' : 'off'})`,
+    );
+  });
+  server.on('error', (e) => {
+    log('HTTP server error:', e.message);
+    process.exit(1);
+  });
+}
+
+if (TRANSPORT === 'http') startHttp();
+else startStdio();

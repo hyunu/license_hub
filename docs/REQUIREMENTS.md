@@ -50,6 +50,7 @@ LicenseHub는 소프트웨어 및 라이브러리의 배포 과정에서 라이�
 - License 상태 확인, Blacklist 및 Revocation 처리
 - 인증서 체인 및 중첩 인증서 검증
 - 발급·활성화·변경에 대한 감사 이력 관리
+- AI 에이전트 연동용 MCP 서버(도구 호출)
 
 ### 2.2 제외 또는 제한 범위
 
@@ -99,6 +100,13 @@ Developer / Administrator
 - 활성화 및 서버 검증 API 제공
 - GitHub Repository 동기화
 - 감사 로그 기록
+
+#### LicenseHub MCP Server
+
+- AI 에이전트가 라이선스 발급·조회를 도구로 호출
+- stdio(로컬) 및 Streamable HTTP(원격) 전송
+- 요청의 인증 토큰을 Backend/API로 전달
+- 오프라인 암호문 검증은 응용 SW의 Core가 수행
 
 #### Core 모듈
 
