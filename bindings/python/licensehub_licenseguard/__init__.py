@@ -24,6 +24,13 @@ __all__ = ["LicenseGuard", "VerificationCode", "VerifyResult"]
 
 
 class VerificationCode:
+    """검증 결과 코드.
+
+    값은 core/include/licensehub_core.h 의 enum lh_verification_code 와
+    1:1 로 대응한다. 값을 바꾸면 안 된다.
+    tools/check_abi_codes.py 가 헤더·코어·바인딩 간 불일치를 검사한다.
+    """
+
     VALID = 0
     INVALID_FORMAT = 1
     UNSUPPORTED_SCHEMA = 2
@@ -36,10 +43,9 @@ class VerificationCode:
     SERVER_REJECTED = 9
     REVOKED = 10
     BLACKLISTED = 11
-    DEVICE_MISMATCH = 12
-    CHAIN_INVALID = 13
-    CHAIN_TOO_DEEP = 14
-    POLICY_REJECTED = 15
+    CHAIN_INVALID = 12
+    CHAIN_TOO_DEEP = 13
+    POLICY_REJECTED = 14
 
     _NAMES = {
         VALID: "VALID",
@@ -54,7 +60,6 @@ class VerificationCode:
         SERVER_REJECTED: "SERVER_REJECTED",
         REVOKED: "REVOKED",
         BLACKLISTED: "BLACKLISTED",
-        DEVICE_MISMATCH: "DEVICE_MISMATCH",
         CHAIN_INVALID: "CHAIN_INVALID",
         CHAIN_TOO_DEEP: "CHAIN_TOO_DEEP",
         POLICY_REJECTED: "POLICY_REJECTED",

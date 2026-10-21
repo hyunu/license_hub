@@ -19,10 +19,9 @@ namespace LicenseHub.LicenseGuard
         ServerRejected = 9,
         Revoked = 10,
         Blacklisted = 11,
-        DeviceMismatch = 12,
-        ChainInvalid = 13,
-        ChainTooDeep = 14,
-        PolicyRejected = 15,
+        ChainInvalid = 12,
+        ChainTooDeep = 13,
+        PolicyRejected = 14,
     }
 
     /// <summary>검증 결과.</summary>

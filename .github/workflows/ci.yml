@@ -59,3 +59,18 @@ jobs:
         run: npm ci
       - name: build
         run: npm run build
+
+  abi:
+    name: ABI Contract (Header / Core / Bindings)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      - name: verification code contract
+        run: python3 tools/check_abi_codes.py -v
+      - name: C# binding build
+        run: dotnet build bindings/csharp/LicenseHub.LicenseGuard.csproj -c Release
+      - name: Python binding self-test
+        run: python3 -m unittest discover -s bindings/python/tests -v

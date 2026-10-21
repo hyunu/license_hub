@@ -1367,4 +1367,123 @@ mod tests {
         };
         assert_eq!(status, -1);
     }
+
+    //--------------------------------------------------------------------------------
+    // 검증 코드 계약 검증
+    //
+    // C 헤더의 enum lh_verification_code 가 verification_code() 매핑과 어긋나면
+    // 바인딩(Python/C#)까지 전부 실패 코드가 뒤틀린다. 바인딩도 이 헤더를
+    // 기준으로 하므로, 여기서 어긋나는 순간 모든 언어에서 의미가 달라진다.
+    //--------------------------------------------------------------------------------
+
+    /// CamelCase 이름을 SCREAMING_SNAKE 로 바꾼다.
+    /// InvalidFormat -> INVALID_FORMAT, NotYetValid -> NOT_YET_VALID
+    fn screaming_snake(name: &str) -> String {
+        let mut out = String::new();
+        let mut prev_lower = false;
+        for ch in name.chars() {
+            if ch.is_ascii_uppercase() && prev_lower {
+                out.push('_');
+            }
+            prev_lower = ch.is_ascii_lowercase();
+            out.push(ch.to_ascii_uppercase());
+        }
+        out
+    }
+
+    #[test]
+    fn c_header_codes_match_verification_code_mapping() {
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let header =
+            std::fs::read_to_string(format!("{manifest}/include/licensehub_core.h")).expect("헤더");
+        let source = std::fs::read_to_string(format!("{manifest}/src/lib.rs")).expect("소스");
+
+        // (1) 헤더의 enum 파싱: LH_NAME = VALUE
+        let mut header_codes: Vec<(String, u32)> = Vec::new();
+        let mut in_enum = false;
+        for line in header.lines() {
+            let line = line.trim();
+            if line.starts_with("enum lh_verification_code") {
+                in_enum = true;
+                continue;
+            }
+            if !in_enum {
+                continue;
+            }
+            if line.starts_with('}') {
+                break;
+            }
+            if let Some((name, value)) = line.split_once('=') {
+                let name = name.trim().trim_end_matches(',').to_string();
+                let value: u32 = value
+                    .trim()
+                    .trim_end_matches(',')
+                    .parse()
+                    .expect("헤더 코드 값");
+                header_codes.push((name, value));
+            }
+        }
+        assert!(!header_codes.is_empty(), "헤더에서 enum을 찾지 못했습니다");
+
+        // (2) verification_code() 의 매핑 arms 파싱
+        let start = source
+            .find("fn verification_code(")
+            .expect("verification_code 함수");
+        let body = &source[start..];
+        let body = match body.find("\n}\n") {
+            Some(end) => &body[..end],
+            None => body,
+        };
+        let mut arms: Vec<(String, u32)> = Vec::new();
+        let mut rest = body;
+        while let Some(idx) = rest.find("Err(VerificationError::") {
+            rest = &rest[idx + "Err(VerificationError::".len()..];
+            let name_end = rest.find(')').expect("변형 이름 끝");
+            let name = rest[..name_end].to_string();
+            rest = &rest[name_end..];
+            let arrow = rest.find("=>").expect("매칭 arm 화살표");
+            rest = rest[arrow + 2..].trim_start();
+            let num_end = rest
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            let value: u32 = rest[..num_end].parse().expect("arm 코드 값");
+            arms.push((name, value));
+        }
+        assert!(
+            !arms.is_empty(),
+            "verification_code arms 를 찾지 못했습니다"
+        );
+
+        // (3) LH_VALID(0) 은 Ok(()) 대응
+        assert_eq!(header_codes[0].0, "LH_VALID");
+        assert_eq!(header_codes[0].1, 0);
+        assert_eq!(
+            arms.len(),
+            header_codes.len() - 1,
+            "VerificationError 변형 수({})와 헤더 실패 코드 수({})가 다릅니다",
+            arms.len(),
+            header_codes.len() - 1
+        );
+
+        // (4) 각 변형의 코드가 헤더와 일치
+        for (name, value) in &arms {
+            let header_name = format!("LH_{}", screaming_snake(name));
+            let expected = header_codes
+                .iter()
+                .find(|(n, _)| *n == header_name)
+                .unwrap_or_else(|| panic!("헤더에 {header_name} 이 없습니다"));
+            assert_eq!(
+                *value, expected.1,
+                "{name} 의 코드가 헤더 {header_name} 과 다릅니다"
+            );
+        }
+
+        // (5) 헤더의 모든 실패 코드가 실제 매핑에 존재
+        for (name, value) in header_codes.iter().skip(1) {
+            assert!(
+                arms.iter().any(|(_, v)| v == value),
+                "{name}={value} 에 대응하는 VerificationError 변형이 없습니다"
+            );
+        }
+    }
 }
