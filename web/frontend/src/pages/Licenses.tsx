@@ -329,9 +329,9 @@ export function Licenses() {
               </div>
             </div>
             <p className="small">
-              이 창을 닫으면 다시 내려받을 수 없습니다. 서버는 이 키를 저장하지 않습니다.
-              이 키를 받은 앱만 라이선스를 복호화할 수 있으므로 배포 대상 Application 에만 넣고,
-              키보드에도 붙여넣지 말고 파일로 보관하세요.
+              이 창을 닫으면 다시 내려받을 수 없고, 서버는 이 키를 저장하지 않습니다.
+              이 키를 가진 Application만 라이선스를 복호화할 수 있으므로, 배포 대상 Application에만 넣으세요.
+              다른 곳에 붙여넣거나 외부로 공유하지 말고, 내려받은 파일로만 보관하세요.
             </p>
             <pre className="jsonbox">{keyReveal.privatePem}</pre>
           </section>
