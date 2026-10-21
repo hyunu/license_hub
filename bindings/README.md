@@ -8,10 +8,16 @@
 
 ## 지원 언어
 
-| 언어 | 구현 | 실행 방법 |
+| 언어 | 소스 | 배포 |
 |---|---|---|
-| C | `c/verify_all.c` | `cd c && ./build.sh` |
-| Rust | `core/` 크레이트 자체 | `cd core && cargo test` |
+| C | `c/` | `release-core.yml` → C SDK zip (헤더+lib+예제) |
+| Rust | `core/` 크레이트 | git/path 의존성 |
+| Python | `python/` | 플랫폼별 wheel (네이티브 번들) |
+| C# | `csharp/` | nupkg (`runtimes/<rid>/native`) |
+
+운영 경로(암호화 라이선스)는 C/Rust의 `lh_decrypt_verify_trusted_license` /
+`verify_trusted`, Python/C#의 `decrypt_verify_trusted_license` 로 호출한다.
+플랫폼별 빌드·배포는 `docs/DISTRIBUTION.md` 를 참고한다.
 
 두 바인딩은 동일한 픽스처로 다음을 검증한다.
 

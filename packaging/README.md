@@ -12,6 +12,8 @@
 
 1. `core/build.sh` 로 네이티브 라이브러리 빌드
 2. C / Rust 패키지를 `distribute/` 아래에 생성
+3. Python/C# 패키지와 Windows·Linux·macOS 릴리스 산출물은
+   `release-core.yml` 워크플로가 생성한다 (`docs/DISTRIBUTION.md` 참고).
 
 ## 산출물 구조
 

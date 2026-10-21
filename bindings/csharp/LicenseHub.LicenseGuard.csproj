@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>LicenseHub.LicenseGuard</AssemblyName>
+    <RootNamespace>LicenseHub.LicenseGuard</RootNamespace>
+    <PackageId>LicenseHub.LicenseGuard</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>LicenseHub</Authors>
+    <Description>LicenseHub LicenseGuard verification binding</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="runtimes/**" Pack="true" PackagePath="runtimes/" />
+  </ItemGroup>
+</Project>

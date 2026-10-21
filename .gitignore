@@ -18,6 +18,11 @@ packaging/python/build/
 bindings/**/*.dylib
 bindings/**/*.so
 bindings/**/*.dll
+bindings/python/build/
+bindings/python/dist/
+bindings/python/*.egg-info/
+bindings/csharp/bin/
+bindings/csharp/obj/
 packaging/**/*.dylib
 packaging/**/*.so
 packaging/**/*.dll

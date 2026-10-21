@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "licensehub-licenseguard"
+version = "0.1.0"
+description = "LicenseHub LicenseGuard verification binding"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[tool.setuptools]
+packages = ["licensehub_licenseguard"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+licensehub_licenseguard = ["native/*/*"]

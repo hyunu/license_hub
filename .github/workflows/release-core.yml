@@ -1,0 +1,174 @@
+name: Release Core SDK
+
+# LicenseHub Core(LicenseGuard) 배포 산출물을 만든다.
+# - C SDK zip: 헤더 + 플랫폼별 라이브러리 + 예제
+# - Python wheel: 플랫폼별 네이티브 번들
+# - C# nupkg: runtimes/<rid>/native 포함
+#
+# 트리거:
+# - 수동: version 입력
+# - 태그 push: v0.1.0
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.1.0)'
+        required: true
+        default: '0.1.0'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  native:
+    name: native ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            rid: linux-x64
+            wheel_plat: linux_x86_64
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            rid: linux-arm64
+            wheel_plat: linux_aarch64
+          - os: macos-15-intel
+            platform: macos-x86_64
+            rid: osx-x64
+            wheel_plat: macosx_10_12_x86_64
+          - os: macos-15
+            platform: macos-arm64
+            rid: osx-arm64
+            wheel_plat: macosx_11_0_arm64
+          - os: windows-latest
+            platform: windows-x86_64
+            rid: win-x64
+            wheel_plat: win_amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build core
+        shell: bash
+        run: cargo build --manifest-path core/Cargo.toml --release --features online
+
+      - name: Stage native library
+        shell: bash
+        run: |
+          mkdir -p "artifacts/native/${{ matrix.platform }}"
+          case "${{ matrix.platform }}" in
+            macos-*) cp core/target/release/liblicensehub_core.dylib "artifacts/native/${{ matrix.platform }}/" ;;
+            linux-*) cp core/target/release/liblicensehub_core.so "artifacts/native/${{ matrix.platform }}/" ;;
+            windows-*) cp core/target/release/licensehub_core.dll "artifacts/native/${{ matrix.platform }}/" ;;
+          esac
+          cp core/include/licensehub_core.h "artifacts/native/${{ matrix.platform }}/"
+
+      - name: Build Python wheel
+        shell: bash
+        run: |
+          PY=python3
+          command -v python3 >/dev/null 2>&1 || PY=python
+          "$PY" -m pip install --upgrade pip wheel setuptools
+          LIB=$(find "artifacts/native/${{ matrix.platform }}" -type f \( -name '*.dylib' -o -name '*.so' -o -name '*.dll' \) | head -1)
+          "$PY" bindings/python/build_wheel.py \
+            --platform "${{ matrix.platform }}" \
+            --plat-name "${{ matrix.wheel_plat }}" \
+            --lib "$LIB" \
+            --out artifacts/wheels
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: artifacts/native/${{ matrix.platform }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: artifacts/wheels/*.whl
+
+  csharp:
+    name: csharp nupkg
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: artifacts
+
+      - name: Assemble runtimes
+        shell: bash
+        run: |
+          add() {
+            mkdir -p "bindings/csharp/runtimes/$1/native"
+            cp "$2" "bindings/csharp/runtimes/$1/native/"
+          }
+          add win-x64 artifacts/native-windows-x86_64/licensehub_core.dll
+          add linux-x64 artifacts/native-linux-x86_64/liblicensehub_core.so
+          add linux-arm64 artifacts/native-linux-arm64/liblicensehub_core.so
+          add osx-x64 artifacts/native-macos-x86_64/liblicensehub_core.dylib
+          add osx-arm64 artifacts/native-macos-arm64/liblicensehub_core.dylib
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Pack
+        run: dotnet pack bindings/csharp -c Release -o artifacts/nuget
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget
+          path: artifacts/nuget/*.nupkg
+
+  release:
+    name: release
+    needs: [native, csharp]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble C SDK
+        shell: bash
+        run: |
+          mkdir -p dist/c/include dist/c/examples
+          cp core/include/licensehub_core.h dist/c/include/
+          cp packaging/c/verify_example.c dist/c/examples/
+          cp packaging/c/decrypt_verify_example.c dist/c/examples/
+          for d in artifacts/native-*; do
+            p=$(basename "$d")
+            p=${p#native-}
+            mkdir -p "dist/c/lib/$p"
+            cp "$d"/* "dist/c/lib/$p"/
+          done
+          find dist/c/lib -name 'licensehub_core.h' -delete
+
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          (cd dist && zip -r "../licensehub-core-${VERSION}.zip" c >/dev/null)
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: LicenseHub Core v${{ env.VERSION }}
+          files: |
+            licensehub-core-${{ env.VERSION }}.zip
+            artifacts/wheel-*/*.whl
+            artifacts/nuget/*.nupkg
+          fail_on_unmatched_files: false
