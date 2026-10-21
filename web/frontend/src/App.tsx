@@ -94,7 +94,7 @@ const NAV: Array<{ to: string; label: string; icon: ReactNode }> = [
   },
   {
     to: '/guide',
-    label: '시스템 가이드',
+    label: '라이선스 가이드',
     icon: (
       <Icon>
         <path d="M8 4.2v7.6" />
