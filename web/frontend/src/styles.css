@@ -289,7 +289,7 @@ code.inline {
 
 /* ---------- 시스템 가이드 ---------- */
 .guide .lead {
-  font-size: 14.5px; color: var(--muted); max-width: 78ch; margin: 4px 0 6px;
+  font-size: 14.5px; color: var(--muted); margin: 4px 0 6px;
 }
 .guide .sec { margin-top: 26px; }
 .guide .sec-title { font-family: var(--serif); font-size: 17px; font-weight: 700; margin: 0 0 4px; }

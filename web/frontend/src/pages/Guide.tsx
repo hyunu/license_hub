@@ -1,5 +1,5 @@
 /* LicenseHub 라이선스 사용 가이드 — 발급받은 인증서(라이선스)의 개념과,
-   응용 앱에서 실제 사용하는 흐름을 설명한다. 절차는 인라인 SVG 다이어그램으로 나타낸다.
+   응용 프로그램에서 실제 사용하는 흐름을 설명한다. 절차는 인라인 SVG 다이어그램으로 나타낸다.
    본문 개행은 문장 단위로만 하고, 약어 대신 풀네임을 사용한다. */
 
 function Arrow() {
@@ -106,7 +106,7 @@ function VerifyDiagram() {
 
       <rect x="508" y="66" width="140" height="64" rx="2" fill="var(--panel)" stroke="var(--line-strong)" />
       <text x="578" y="93" textAnchor="middle" className="dg-t">자격 대조</text>
-      <text x="578" y="113" textAnchor="middle" className="dg-s">제품·버전·앱·서버</text>
+      <text x="578" y="113" textAnchor="middle" className="dg-s">제품·버전·실행·서버</text>
 
       <line x1="648" y1="98" x2="676" y2="98" stroke="var(--accent)" strokeWidth="1.5" markerEnd="url(#varr)" />
 
@@ -114,21 +114,6 @@ function VerifyDiagram() {
       <text x="768" y="93" textAnchor="middle" className="dg-t">핵심 기능 활성화</text>
       <text x="768" y="113" textAnchor="middle" className="dg-s">모두 일치할 때만</text>
     </svg>
-  )
-}
-
-function KeyChip({ name, code, tag, who, note, tone }: {
-  name: string; code: string; tag: string; who: string; note: string; tone?: 'accent' | 'ok' | 'warn'
-}) {
-  return (
-    <div className={`keychip ${tone ?? ''}`}>
-      <div className="kc-top">
-        <span className="kc-k mono">{name}</span>
-        <span className="kc-tag">{tag}</span>
-      </div>
-      <div className="kc-code mono">{code} · {who}</div>
-      <div className="kc-note mono">{note}</div>
-    </div>
   )
 }
 
@@ -145,23 +130,20 @@ export function Guide() {
 
       <div className="content">
         <p className="lead">
-          LicenseHub는 응용 소프트웨어가 "정당한 사용자에게 발급된 정품"임을 증명하는
-          라이선스 발급·검증 시스템입니다.
-          이 가이드는 발급받은 인증서(라이선스)가 무엇인지, 그리고 응용 앱이 그 인증서로
-          무엇을 어떻게 확인하는지 설명합니다.
+          LicenseHub는 응용 소프트웨어가 "정당한 사용자에게 발급된 정품"임을 증명하는 라이선스 발급·검증 시스템입니다.
+          <br />
+          이 가이드는 발급받은 인증서(라이선스)가 무엇인지, 그리고 응용 프로그램이 그 인증서로 무엇을 어떻게 확인하는지 설명합니다.
         </p>
 
         {/* 1. 라이선스란 무엇인가 */}
         <h2 id="what">1. 라이선스, 어떤 파일인가</h2>
         <p>
           라이선스 파일은 발급 기관이 발행한 <strong>인증서</strong>입니다.
-          응용 소프트웨어가 특정 제품·버전을 특정 자에게, 일정 기간, 특정 조건으로
-          사용할 자격이 있음을 담고 있습니다.
+          응용 소프트웨어가 특정 제품·버전을 특정 사용자에게, 일정 기간, 특정 조건으로 사용할 자격이 있음을 담고 있습니다.
         </p>
         <p>
           이 인증서는 암호문으로 저장됩니다.
-          발급 기관의 전용 키로 서명하고, 대상 응용 앱의 공개키로 암호화했기 때문에
-          서명 기관과 내용이 바뀌었는지, 그리고 열어볼 자격이 있는지를 동시에 증명합니다.
+          발급 기관의 전용 키로 서명하고, 대상 응용 프로그램의 공개키로 암호화했기 때문에 발급 기관의 서명이나 내용이 바뀌었는지, 그리고 열어볼 자격이 있는지를 동시에 증명합니다.
         </p>
         <p>
           파일 안에는 다음 항목이 담깁니다.
@@ -176,19 +158,10 @@ export function Guide() {
           <span className="chip">허용 등급 (오프라인·온라인)</span>
         </div>
 
-        <div className="callout">
-          <div className="callout-h">요약</div>
-          <p>
-            라이선스는 열쇠가 아니라 <strong>인증서</strong>입니다.
-            권한을 스스로 바꾸지 못하도록 암호문으로 보관하고,
-            검증 시 그 인증서가 실제로 발급 기관에서 나왔는지 확인합니다.
-          </p>
-        </div>
-
         {/* 2. 구성 요소 */}
         <h2 id="parts">2. 라이선스를 이루는 것들</h2>
         <p>
-          한 장의 인증서가 동작하려면 네 가지가 맞물려야 합니다.
+          인증서가 실제로 동작하려면 다음 네 가지가 맞물려야 합니다.
         </p>
         <table className="tbl">
           <thead>
@@ -206,8 +179,7 @@ export function Guide() {
               <td><strong>검증 모듈</strong> (LicenseGuard)</td>
               <td>
                 응용 프로그램에 함께 배포되는 검증 라이브러리입니다.
-                라이선스를 열고, 서명을 확인하고, 자격을 대조한 뒤
-                핵심 기능을 켜거나 끕니다.
+                라이선스를 열고, 서명을 확인하고, 자격을 대조한 뒤 핵심 기능을 켜거나 끕니다.
               </td>
             </tr>
             <tr>
@@ -220,123 +192,113 @@ export function Guide() {
             <tr>
               <td><strong>응용 프로그램</strong></td>
               <td>
-                최종 사용자가 쓰는 응용 프로그램입니다.
-                발급받은 라이선스 파일과 개인키를 가지고, 실행 시 검증을 요청합니다.
+                최종 사용자가 쓰는 프로그램입니다.
+                발급받은 라이선스 파일과 개인키를 가지고 실행 시 검증을 요청합니다.
               </td>
             </tr>
           </tbody>
         </table>
         <p>
-          관계를 한 줄로 보면 이렇습니다.
-          응용 프로그램은 발급받은 인증서를 검증 모듈에 건네고,
-          검증 모듈은 그 인증서가 정당한지 확인한 뒤에만 핵심 로직을 켭니다.
+          응용 프로그램은 발급받은 인증서를 검증 모듈에 건네고, 검증 모듈은 그 인증서가 정당한지 확인한 뒤에만 핵심 로직을 켭니다.
         </p>
 
         {/* 3. 키 구성 */}
         <h2 id="keys">3. 네 개의 키</h2>
         <p>
           발급과 검증은 네 개의 키로 이루어집니다.
-          개인키는 절대 밖으로 나가지 않고, 공개키만 상대에게 전달됩니다.
+          개인키는 밖으로 나가지 않고, 공개키만 상대에게 전달됩니다.
         </p>
-
-        <div className="keys">
-          <KeyChip
-            name="LicenseHub 서명 개인키" code="LH_Pri" tag="서버 전용"
-            who="보유: 발급 서버" note="인증서에 서명하는 유일한 키. 외부 반출 금지."
-            tone="warn"
-          />
-          <KeyChip
-            name="LicenseHub 검증 공개키" code="LH_Pub" tag="모듈 내장"
-            who="보유: 검증 모듈" note="서명 검증용. 모듈 안에 분산 내장, 사용 후 즉시 삭제."
-            tone="accent"
-          />
-          <KeyChip
-            name="응용 공개키" code="Z_Pub" tag="발급 시 제공"
-            who="보유: 응용 프로그램" note="라이선스를 이 키로 암호화. 애플리케이션 식별자도 여기서 파생."
-            tone="ok"
-          />
-          <KeyChip
-            name="응용 개인키" code="Z_Pri" tag="응용 프로그램 보관"
-            who="보유: 응용 프로그램" note="라이선스를 복호화. 운영체제 보호 저장소에 보관, 외부 반출 금지."
-            tone="warn"
-          />
-        </div>
-
         <table className="tbl">
           <thead>
-            <tr><th>키 이름</th><th>공개 범위</th><th>용도</th></tr>
+            <tr><th>키 이름</th><th>코드</th><th>보유 주체</th><th>공개 범위</th><th>용도</th></tr>
           </thead>
           <tbody>
-            <tr><td><strong>서명 개인키</strong></td><td>없음 (서버 내부 한정)</td><td>인증서에 서명</td></tr>
-            <tr><td><strong>검증 공개키</strong></td><td>검증 모듈에 내장</td><td>서명 검증</td></tr>
-            <tr><td><strong>응용 공개키</strong></td><td>공개 (발급·검증용)</td><td>라이선스 암호화 · 애플리케이션 식별자 파생</td></tr>
-            <tr><td><strong>응용 개인키</strong></td><td>없음 (응용 프로그램 보관)</td><td>라이선스 복호화</td></tr>
+            <tr>
+              <td><strong>LicenseHub 서명 개인키</strong></td>
+              <td className="mono">LH_Pri</td>
+              <td>발급 서버</td>
+              <td>없음 (서버 내부 한정)</td>
+              <td>인증서에 서명</td>
+            </tr>
+            <tr>
+              <td><strong>LicenseHub 검증 공개키</strong></td>
+              <td className="mono">LH_Pub</td>
+              <td>검증 모듈</td>
+              <td>모듈 내장</td>
+              <td>서명 검증</td>
+            </tr>
+            <tr>
+              <td><strong>응용 공개키</strong></td>
+              <td className="mono">App_Pub</td>
+              <td>응용 프로그램</td>
+              <td>공개</td>
+              <td>라이선스 암호화 · 애플리케이션 식별자 파생</td>
+            </tr>
+            <tr>
+              <td><strong>응용 개인키</strong></td>
+              <td className="mono">App_Pri</td>
+              <td>응용 프로그램</td>
+              <td>없음 (응용 프로그램 보관)</td>
+              <td>라이선스 복호화</td>
+            </tr>
           </tbody>
         </table>
 
-        <div className="callout warn">
-          <div className="callout-h">지켜야 할 규칙</div>
-          <p>
-            <strong>1)</strong> 개인키는 밖에 내보내지 않습니다.
-          </p>
-          <p>
-            <strong>2)</strong> 서명 개인키는 발급 서버에만 둡니다.
-          </p>
-          <p>
-            <strong>3)</strong> 응용 개인키는 응용 프로그램이 운영체제 보호 저장소에 보관하고,
-            검증 모듈에 상주시키지 않습니다.
-          </p>
-          <p>
-            <strong>4)</strong> 검증에 쓰는 공개키는 모듈 안에 넣되,
-            필요한 순간에만 복원하고 사용 후 즉시 삭제합니다.
-          </p>
-        </div>
+        <p>
+          키를 다루는 원칙은 다음과 같습니다.
+        </p>
+        <table className="tbl">
+          <thead>
+            <tr><th>원칙</th><th>내용</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>개인키 반출 금지</strong></td><td>개인키는 밖으로 내보내지 않습니다.</td></tr>
+            <tr><td><strong>서명 개인키는 서버에만</strong></td><td>발급 서버 외부에 두지 않습니다.</td></tr>
+            <tr><td><strong>응용 개인키는 보호 저장소에</strong></td><td>운영체제 보호 저장소에 보관하고, 검증 모듈에 상주시키지 않습니다.</td></tr>
+            <tr><td><strong>검증 공개키는 필요할 때만</strong></td><td>모듈에 분산 내장하고, 사용 후 즉시 삭제합니다.</td></tr>
+          </tbody>
+        </table>
 
         {/* 4. 발급 절차 */}
         <h2 id="issue">4. 인증서 발급 절차</h2>
         <p>
           발급은 발급 서버 안에서만 일어납니다.
-          아래 다이어그램은 발급 요청이 라이선스 파일이 되기까지의 전체 절차와,
-          각 단계에서 어느 키를 쓰는지 보여줍니다.
+          서명은 정당한 발급을, 암호화는 열 자격을 함께 보장합니다.
+          아래 다이어그램은 발급 요청이 라이선스 파일이 되기까지의 전체 절차와, 각 단계에서 어느 키를 쓰는지 보여줍니다.
         </p>
 
         <IssueDiagram />
         <p className="dg-cap">
-          그림 1. 인증서 발급 절차 — 발급 서버가 인증서를 구성해 서명하고, 대상 앱의 공개키로 암호화한 뒤
-          라이선스 파일로 전달한다.
+          그림 1. 인증서 발급 절차 — 발급 서버가 인증서를 구성해 서명하고, 대상 응용 프로그램의 공개키로 암호화한 뒤 라이선스 파일로 전달한다.
         </p>
 
-        <p>
-          절차를 단계별로 보면 다음과 같습니다.
-        </p>
-        <p>
-          <strong>① 발급 요청</strong> — 대상 제품과 버전, 허용 등급, 소유자, 만료 시각,
-          그리고 그 응용 프로그램의 공개키를 함께 요청합니다.
-        </p>
-        <p>
-          <strong>② 인증서 구성</strong> — 요청받은 자격 정보로 인증서를 작성합니다.
-          여기에 키 식별자와 만료 시각이 포함됩니다.
-        </p>
-        <p>
-          <strong>③ 서명</strong> — 발급 서버의 서명 개인키로 인증서에 서명합니다.
-          이 단계 덕분에 나중에 "정말 이 기관이 발행한 것인지"를 확인할 수 있습니다.
-        </p>
-        <p>
-          <strong>④ 암호화</strong> — 서명된 인증서를 대상 응용 프로그램의 공개키로 암호화합니다.
-          공개키로 감싸기 때문에 그 공개키에 상응하는 개인키를 가진 응용 프로그램만 열 수 있습니다.
-        </p>
-        <p>
-          <strong>⑤ 전달</strong> — 암호화된 라이선스 파일을 응용 프로그램에 전달합니다.
-          서명과 암호화를 거쳤으므로, 전달 경로를 염려할 필요 없이 그대로 두면 됩니다.
-        </p>
-
-        <div className="callout">
-          <div className="callout-h">왜 서명과 암호화를 둘 다 하나</div>
-          <p>
-            서명만 하면 내용이 유출되고, 암호화만 하면 발급 주체를 증명할 수 없습니다.
-            서명으로 <strong>정당한 발급</strong>을, 암호화로 <strong>열 자격</strong>을 함께 보장합니다.
-          </p>
-        </div>
+        <table className="tbl">
+          <thead>
+            <tr><th>단계</th><th>하는 일</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>① 발급 요청</strong></td>
+              <td>대상 제품과 버전, 허용 등급, 소유자, 만료 시각, 그리고 그 응용 프로그램의 공개키를 함께 요청합니다.</td>
+            </tr>
+            <tr>
+              <td><strong>② 인증서 구성</strong></td>
+              <td>요청받은 자격 정보로 인증서를 작성합니다. 키 식별자와 만료 시각이 포함됩니다.</td>
+            </tr>
+            <tr>
+              <td><strong>③ 서명</strong></td>
+              <td>발급 서버의 서명 개인키로 인증서에 서명합니다. 나중에 정말 이 기관이 발행했는지 확인할 근거가 됩니다.</td>
+            </tr>
+            <tr>
+              <td><strong>④ 암호화</strong></td>
+              <td>서명된 인증서를 대상 응용 프로그램의 공개키로 암호화합니다. 그 공개키에 상응하는 개인키를 가진 응용 프로그램만 열 수 있습니다.</td>
+            </tr>
+            <tr>
+              <td><strong>⑤ 전달</strong></td>
+              <td>암호화된 라이선스 파일을 응용 프로그램에 전달합니다.</td>
+            </tr>
+          </tbody>
+        </table>
 
         {/* 5. 검증 절차 */}
         <h2 id="verify">5. 응용 프로그램이 확인하는 것</h2>
@@ -350,35 +312,29 @@ export function Guide() {
           그림 2. 라이선스 검증 절차 — 복호화, 서명 검증, 자격 대조를 차례로 통과해야 핵심 기능이 켜진다.
         </p>
 
-        <p>
-          각 단계에서 확인하는 것은 다음과 같습니다.
-        </p>
-        <p>
-          <strong>1. 복호화</strong> — 응용 프로그램은 자신의 개인키로 라이선스를 엽니다.
-          개인키가 없으면 암호문 자체를 풀 수 없으므로, 남이 가져가 봐야 읽지 못합니다.
-        </p>
-        <p>
-          <strong>2. 서명 검증</strong> — 검증 모듈에 내장된 발급 기관 공개키로
-          서명이 올바른지 확인합니다.
-          발급 기관이 아닌 누군가 내용을 고쳤다면 이 단계에서 걸러집니다.
-        </p>
-        <p>
-          <strong>3. 자격 대조</strong> — 열어낸 인증서의 조건이 현재 환경과 맞는지 확인합니다.
-          제품과 버전, 실행 파일, 그리고 발급 시 설정한 서버 검증 상태를 대조합니다.
-        </p>
+        <table className="tbl">
+          <thead>
+            <tr><th>단계</th><th>확인 내용</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>1. 복호화</strong></td>
+              <td>응용 프로그램이 자신의 개인키로 라이선스를 엽니다. 개인키가 없으면 암호문 자체를 풀 수 없습니다.</td>
+            </tr>
+            <tr>
+              <td><strong>2. 서명 검증</strong></td>
+              <td>검증 모듈에 내장된 발급 기관 공개키로 서명이 올바른지 확인합니다. 발급 기관이 아니면 내용을 고쳐도 이 단계에서 걸러집니다.</td>
+            </tr>
+            <tr>
+              <td><strong>3. 자격 대조</strong></td>
+              <td>제품과 버전, 실행 파일, 그리고 발급 시 설정한 서버 검증 상태가 현재 환경과 맞는지 대조합니다.</td>
+            </tr>
+          </tbody>
+        </table>
         <p>
           세 단계를 모두 통과하면 핵심 로직이 활성화됩니다.
           하나라도 실패하면 참조를 넘기지 않아 기능이 꺼진 채로 유지됩니다.
         </p>
-
-        <div className="callout ok">
-          <div className="callout-h">핵심</div>
-          <p>
-            검증은 <strong>인증서가 진짜인지</strong>와 <strong>조건이 충족되는지</strong>를
-            순서대로 확인하는 과정입니다.
-            둘 중 하나라도 어긋나면 권한을 주지 않습니다.
-          </p>
-        </div>
 
         {/* 6. 등급 */}
         <h2 id="level">6. 허용 등급: 오프라인과 온라인</h2>
@@ -404,7 +360,7 @@ export function Guide() {
           </tbody>
         </table>
         <p>
-          서버 검증 상태를 켠 라이선스(L2)는, 서버가 응답하지 않으면 권한을 유지하지 않습니다.
+          서버 검증 상태를 켠 라이선스(L2)는 서버가 응답하지 않으면 권한을 유지하지 않습니다.
           안전을 우선하는 서버 제품에는 이 방식을 씁니다.
         </p>
 
@@ -425,8 +381,8 @@ LH_Library lib = NULL;
 LH_Status st = lh_decrypt_verify_trusted_license(
     lic_bytes,   /* 발급받은 라이선스 파일 (암호문 그대로) */
     lic_len,
-    z_pri,       /* 응용 개인키 */
-    z_pri_len,
+    app_pri,     /* 응용 개인키 */
+    app_pri_len,
     NULL, 0,     /* 추가 컨텍스트 (없으면 생략) */
     &lib);
 
@@ -456,8 +412,7 @@ if (st == LH_VALID && lib != NULL) {
         </table>
         <p>
           응용 프로그램은 각 플랫폼에 맞는 값을 채워 넣습니다.
-          데스크톱에서는 실행 파일 이름과 호스트 모듈 경로를,
-          모바일에서는 번들 식별자를 사용합니다.
+          데스크톱에서는 실행 파일 이름과 호스트 모듈 경로를, 모바일에서는 번들 식별자를 사용합니다.
         </p>
 
         <h3 id="integrate-flow">7.3 붙이는 흐름</h3>
@@ -467,7 +422,7 @@ if (st == LH_VALID && lib != NULL) {
         <div className="flow">
           <div className="flow-step">
             <div className="fs-num mono">01</div>
-            <div className="fs-t">앱 식별 정보 준비</div>
+            <div className="fs-t">식별 정보 준비</div>
             <div className="fs-d">제품·버전·실행 파일·핵심 모듈 경로를 정하고, 응용 공개키를 만듭니다.</div>
           </div>
           <Arrow />
@@ -486,25 +441,27 @@ if (st == LH_VALID && lib != NULL) {
           <div className="flow-step">
             <div className="fs-num mono">04</div>
             <div className="fs-t">실행 시 검증</div>
-            <div className="fs-d">앱 시작 시 인증서와 개인키를 검증 모듈에 넘기고, 핵심 기능을 검증 뒤에 켭니다.</div>
+            <div className="fs-d">시작 시 인증서와 개인키를 검증 모듈에 넘기고, 핵심 기능을 검증 뒤에 켭니다.</div>
           </div>
         </div>
 
         <h3 id="integrate-id">7.4 애플리케이션 식별자</h3>
         <p>
           응용 공개키를 기준으로 고유한 애플리케이션 식별자가 만들어집니다.
-          이 식별자는 발급과 검증에서 같은 방식으로 계산되므로,
-          응용 프로그램과 발급 기관이 별도로 합의할 필요가 없습니다.
+          이 식별자는 발급과 검증에서 같은 방식으로 계산되므로, 응용 프로그램과 발급 기관이 별도로 합의할 필요가 없습니다.
         </p>
         <Code>{`애플리케이션 식별자 = SHA-256(응용 공개키)
    → 발급 시 계산 = 검증 시 계산 (동일)`}</Code>
         <p>
-          여러 응용 프로그램이 하나의 발급 기관을 쓰거나,
-          한 응용 프로그램이 여러 환경에서 실행되더라도 각각 다른 식별자가 나옵니다.
+          여러 응용 프로그램이 하나의 발급 기관을 쓰거나, 한 응용 프로그램이 여러 환경에서 실행되더라도 각각 다른 식별자가 나옵니다.
         </p>
 
         {/* 8. 보안 유의사항 */}
         <h2 id="security">8. 보안에서 유의할 점</h2>
+        <p>
+          키 취급 원칙은 3장에서 다뤘습니다.
+          여기서는 그 밖에 검증 흐름에서 자주 놓치는 점을 정리합니다.
+        </p>
 
         <table className="tbl dont">
           <thead>
@@ -520,14 +477,6 @@ if (st == LH_VALID && lib != NULL) {
               <td>검증 없이 항상 켜진 상태가 되어 인증서를 우회하는 경로를 만듭니다.</td>
             </tr>
             <tr>
-              <td>응용 개인키를 설치 파일이나 공개 저장소에 넣기</td>
-              <td>그 개인키로 다른 기기에서까지 라이선스를 열 수 있게 됩니다.</td>
-            </tr>
-            <tr>
-              <td>서명 개인키를 개발자 PC나 저장소에 두기</td>
-              <td>유출되면 가짜 인증서를 발급할 수 있습니다. 반드시 발급 서버에만 둡니다.</td>
-            </tr>
-            <tr>
               <td>온라인 등급에서 연결 실패를 통과로 처리하기</td>
               <td>연결 실패 시 비활성이라는 원칙이 무너져 서버가 꺼져 있어도 권한이 유지됩니다.</td>
             </tr>
@@ -539,14 +488,6 @@ if (st == LH_VALID && lib != NULL) {
             <tr><th>지켜야 할 것</th><th>이유</th></tr>
           </thead>
           <tbody>
-            <tr>
-              <td>개인키를 운영체제 보호 저장소에 보관</td>
-              <td>접근 주체를 운영체제가 통제해 외부 접근을 줄입니다.</td>
-            </tr>
-            <tr>
-              <td>검증 모듈의 내장 공개키를 분산해 두고, 사용 후 즉시 삭제</td>
-              <td>모듈을 분석해도 검증 키를 한 번에 회수하지 못하게 합니다.</td>
-            </tr>
             <tr>
               <td>검증에 실패하면 참조를 넘기지 않기</td>
               <td>기본값이 비활성 상태이므로 잘못된 조건에서도 핵심 기능이 켜지지 않습니다.</td>
@@ -561,15 +502,6 @@ if (st == LH_VALID && lib != NULL) {
             </tr>
           </tbody>
         </table>
-
-        <div className="callout warn">
-          <div className="callout-h">한 줄 정리</div>
-          <p>
-            개인키는 밖에 내보내지 않고,
-            검증에 실패하면 권한을 주지 않으며,
-            서버 검증을 켠 라이선스는 연결이 끊기면 비활성화합니다.
-          </p>
-        </div>
 
         {/* 9. 용어 */}
         <h2 id="terms">9. 용어 정리</h2>
