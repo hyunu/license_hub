@@ -1,10 +1,26 @@
 **/target/
 /core/dist/
 
-# 바인딩 빌드 산출물
+# 바인딩·패키징 빌드 산출물 (.NET · Python · C++)
+# 소스가 아닌 재현 가능한 빌드 결과물이므로 저장소에 올리지 않는다.
 **/node_modules/
 **/__pycache__/
 bindings/c/verify_all
+bindings/cpp/verify_all
+bindings/csharp/bin/
+bindings/csharp/obj/
+packaging/csharp/bin/
+packaging/csharp/obj/
+packaging/python/build/
+**/*.egg-info/
+
+# 컴파일된 네이티브 라이브러리 (core 빌드 산출물)
+bindings/**/*.dylib
+bindings/**/*.so
+bindings/**/*.dll
+packaging/**/*.dylib
+packaging/**/*.so
+packaging/**/*.dll
 
 # 배포 패키징 생성 산출물
 /distribute/
