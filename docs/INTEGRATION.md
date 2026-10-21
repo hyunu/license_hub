@@ -346,6 +346,10 @@ export LICENSEHUB_TOKEN=$(tools/licensehub.sh login | jq -r .token)
 | `issue_license` | `licensehub_issue_license` | 인증서 발급 + 암호화 라이선스 생성 |
 | `download_license` | `licensehub_download_license` | 암호화 라이선스 조회/파일 저장 |
 | `verify_license` | `licensehub_verify_license` | 서버 기준 라이선스 상태 확인(승인/거부) |
+| `core_manifest` | `licensehub_core_manifest` | 검증 코어 배포 매니페스트 조회 |
+| `core_module` | `licensehub_core_module` | 검증 코어 다운로드·해제·SHA-256 검증 |
+| `integration_snippet` | `licensehub_integration_snippet` | fail-closed 통합 코드 생성 |
+| `verify_local_module` | `licensehub_verify_local_module` | 코어 스모크 테스트 |
 
 - `verify_license`는 **LicenseHub 서버 기준 상태 확인**이다.
   오프라인 암호문 검증(복호화·서명·자격 대조)은 응용 프로그램이 `core` C ABI로 수행한다.

@@ -505,7 +505,8 @@ pub struct VerificationContext {
 //--------------------------------------------------------------------------------
 // 기본 검증 Context를 생성한다.
 //
-// 기본 시각은 예제·테스트용이며, 운영 검증기는 현재 시각을 명시해야 한다.
+// 이 기본값은 Rust API 예제·테스트 전용이다. C ABI(JSON Context)는 `now` 가
+// 없으면 시스템 시계를 쓰므로, 만료 검사가 고정 시각에 묶이지 않는다.
 // - 인자: 없음
 // - 리턴: VerificationContext 인스턴스
 //--------------------------------------------------------------------------------
@@ -946,9 +947,14 @@ impl FfiVerificationContext {
             _ => None,
         };
         VerificationContext {
-            now: self
-                .now
-                .unwrap_or_else(|| VerificationContext::default().now),
+            // now 를 생략하면 시스템 시계를 쓴다. 예제·테스트용 고정값
+            // (`VerificationContext::default`) 을 쓰면 만료 검사가 그 시각에
+            // 고정되어, 그 시점 이후에 만료된 라이선스가 통과한다.
+            now: self.now.unwrap_or_else(|| {
+                OffsetDateTime::now_utc()
+                    .format(&Rfc3339)
+                    .unwrap_or_default()
+            }),
             product: self.product,
             version: self.version,
             product_id: self.product_id,
@@ -1485,5 +1491,28 @@ mod tests {
                 "{name}={value} 에 대응하는 VerificationError 변형이 없습니다"
             );
         }
+    }
+
+    #[test]
+    fn ffi_context_without_now_uses_system_clock() {
+        // `now` 를 생략한 C ABI 호출이 예제용 고정 시각(2026-06-01)에 묶이면,
+        // 그 시각 이후에 만료된 라이선스가 통과한다. 시스템 시계를 써야 한다.
+        let context: FfiVerificationContext = serde_json::from_str("{}").expect("빈 Context");
+        let converted = context.into_context();
+
+        assert_ne!(
+            converted.now, "2026-06-01T00:00:00Z",
+            "now 를 생략하면 시스템 시계를 써야 합니다"
+        );
+        assert!(
+            parse_time(&converted.now).is_some(),
+            "now 가 RFC 3339 형식이 아닙니다: {}",
+            converted.now
+        );
+
+        // 명시한 값은 그대로 존중해야 한다(테스트에서 시각 고정 가능).
+        let pinned: FfiVerificationContext =
+            serde_json::from_str(r#"{"now":"2026-06-01T00:00:00Z"}"#).expect("고정 시각 Context");
+        assert_eq!(pinned.into_context().now, "2026-06-01T00:00:00Z");
     }
 }

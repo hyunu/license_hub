@@ -178,7 +178,7 @@ OpenCode에서는 `<서버>_<도구>` 이름으로 노출된다(서버 이름이
 원격 호스팅은 `node tools/mcp/licensehub-mcp.js --http`(Streamable HTTP)로 실행하고 Caddy `/mcp` 뒤에 둔다.
 배포 예시는 `tools/mcp/deploy/`에 있다.
 
-연결 절차(준비물·클라이언트별 설정·연결 확인·문제 해결)는 `docs/INTEGRATION.md` §10 "MCP로 연결하기"에 있다.
+`licensehub_core_manifest`, `licensehub_core_module`, `licensehub_integration_snippet`, `licensehub_verify_local_module` 도구를 제공한다. 에이전트는 라이선스 발급 → 검증 코어 다운로드(SHA-256 검증, 기본 정적 링크) → fail-closed 통합 코드 생성 → 로컬 스모크 테스트 순서로 진행할 수 있다. 자세한 절차는 `tools/mcp/README.md` 를 참고한다.
 
 ```sh
 export LICENSEHUB_URL=https://<백엔드주소>

@@ -18,9 +18,44 @@
 | `issue_license` | `licensehub_issue_license` | 인증서 발급 + 암호화 라이선스 생성 |
 | `download_license` | `licensehub_download_license` | 암호화 라이선스 조회/파일 저장 |
 | `verify_license` | `licensehub_verify_license` | 서버 기준 라이선스 상태 확인(승인/거부) |
+| `core_manifest` | `licensehub_core_manifest` | 검증 코어 배포 매니페스트(플랫폼·경로·SHA-256·검증 코드) |
+| `core_module` | `licensehub_core_module` | 플랫폼별 검증 코어를 내려받아 SHA-256 검증 후 로컬에 해제 |
+| `integration_snippet` | `licensehub_integration_snippet` | 대상 언어의 fail-closed 통합 코드 생성 |
+| `verify_local_module` | `licensehub_verify_local_module` | 내려받은 코어의 로드·심볼·컴파일·실행 스모크 테스트 |
 
 > `verify_license`는 **LicenseHub 서버 기준 상태 확인**이다.
 > 오프라인 암호문 검증(복호화·서명·자격 대조)은 응용 프로그램이 `core` C ABI로 수행한다.
+
+## 검증 코어 받아서 통합하기 (권장 순서)
+
+에이전트가 라이선스를 발급한 뒤 **코어를 받아 코드까지 생성**하는 흐름이다.
+
+```jsonc
+// 1. 어떤 플랫폼이 있는지, 검증 코드 값은 무엇인지 확인
+{ "name": "core_manifest", "arguments": {} }
+
+// 2. 해당 플랫폼의 정적 라이브러리를 내려받아 SHA-256 검증 + 해제
+{ "name": "core_module", "arguments": {
+    "platform": "macos-arm64", "kind": "static", "dest": "vendor/licensehub-core"
+} }
+
+// 3. 언어별 fail-closed 통합 코드 생성
+{ "name": "integration_snippet", "arguments": {
+    "language": "c", "level": 1, "platform": "macos-arm64",
+    "license_path": "license.json", "private_key_path": "app_private_key.bin"
+} }
+
+// 4. 실제로 동작하는지 확인 (컴파일러가 있으면 컴파일·실행까지)
+{ "name": "verify_local_module", "arguments": { "platform": "macos-arm64" } }
+```
+
+- `integration_snippet` 이 지원하는 언어: `c`, `cpp`, `rust`, `python`, `csharp`, `go`
+- `kind` 기본값은 `static`(정적 링크)이다. 정적 링크는 `LD_PRELOAD` /
+  `DYLD_INSERT_LIBRARIES` / 라이브러리 파일 교체로 검증을 가로챌 수 없다.
+- 매니페스트 탐색 순서: `LICENSEHUB_CORE_MANIFEST` → 저장소의
+  `core/dist/*/licensehub-core-manifest.json` → GitHub 릴리스 에셋.
+- `core_module` 은 릴리스 zip 을 받아 풀고 **파일별 SHA-256 을 매니페스트와 대조**한다.
+  불일치하면 실패한다.
 
 ## 에이전트용 절차 제공
 
@@ -41,6 +76,9 @@ MCP 서버는 연결 시점에 절차를 직접 제공한다. 별도 문서를 �
 | `LICENSEHUB_URL` | ✅ | 예: `https://licensehub.example.com` |
 | `LICENSEHUB_TOKEN` | 발급/조회 시 | 로그인으로 받은 Bearer 토큰 |
 | `LICENSEHUB_VERIFY_KEY` | 선택 | L2 검증 키. 기본값은 `core/src/lib.rs`의 `VERIFY_API_KEY`와 동일 |
+| `LICENSEHUB_CORE_MANIFEST` | 선택 | 코어 매니페스트 경로 또는 URL. 기본은 로컬 산출물 → GitHub 릴리스 |
+| `LICENSEHUB_CORE_REPO` | 선택 | 릴리스 저장소. 기본 `hyunu/license_hub` |
+| `LICENSEHUB_CORE_VERSION` | 선택 | 특정 버전(예: `0.1.0`). 기본은 최신 릴리스 |
 
 ## 연결 절차 (OpenCode)
 
