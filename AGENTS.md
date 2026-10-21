@@ -173,4 +173,5 @@ OpenCode에서는 `<서버>_<도구>` 이름으로 노출된다(서버 이름이
 - `download_license` — 암호화 라이선스 조회/파일 저장
 - `verify_license` — 서버 기준 라이선스 상태 확인
 
-설정 예시(OpenCode V2 `mcp.servers`, Claude Desktop `mcpServers`)는 `tools/mcp/README.md`에 있다.
+표준 MCP stdio 서버이므로 OpenCode·Cursor·Claude Desktop 등 MCP를 지원하는 클라이언트에서 모두 쓸 수 있다.
+설정 예시(OpenCode V2 `mcp.servers`, Cursor/Claude Desktop `mcpServers`)는 `tools/mcp/README.md`에 있다.

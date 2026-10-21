@@ -302,3 +302,21 @@ POST {verification_url}
 - `core/include/licensehub_core.h` — C ABI 전체 시그니처와 검증 코드
 - `bindings/README.md` — 검증 모듈 바인딩
 - `docs/ARCHITECTURE.md`, `docs/CORE_DESIGN.md` — 설계 배경
+
+## 10. MCP로 연결하기 (에이전트)
+
+`tools/mcp/licensehub-mcp.js`는 표준 MCP stdio 서버이므로 OpenCode뿐 아니라
+Cursor, Claude Desktop, VS Code 등 MCP를 지원하는 클라이언트에서 사용할 수 있다.
+
+```sh
+export LICENSEHUB_URL=https://<백엔드주소>
+export LICENSEHUB_TOKEN=$(tools/licensehub.sh login | jq -r .token)
+```
+
+- OpenCode(전역): `~/.config/opencode/opencode.jsonc`의 `mcp.servers`
+- Cursor: `.cursor/mcp.json` 또는 `~/.cursor/mcp.json`의 `mcpServers`
+- Claude Desktop: `claude_desktop_config.json`의 `mcpServers`
+- 전역/다른 프로젝트에서는 `command`/`args`에 **절대경로**를 쓴다.
+- 연결 확인: `opencode mcp list` (OpenCode), 클라이언트의 MCP 설정 화면
+
+클라이언트별 예시와 문제 해결은 `tools/mcp/README.md`를 참고한다.
