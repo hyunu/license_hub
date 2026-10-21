@@ -150,6 +150,7 @@ if (rc == 0 && code == LH_VALID) {
 - `bindings/` — 배포용 검증 라이브러리(C, Rust)와 `testdata/` 픽스처
 - `web/backend/src/routes.rs` — REST API 구현
 - `tools/licensehub.sh` — 로그인·생성·발급·내려받기 CLI
+- `tools/mcp/` — MCP 서버(도구 호출로 발급·조회). 설정은 `tools/mcp/README.md`
 - `docs/INTEGRATION.md` — 단계별 상세 가이드
 - `docs/openapi.yaml` — 기계 판독용 API 계약
 
@@ -158,3 +159,18 @@ if (rc == 0 && code == LH_VALID) {
 - `docs/INTEGRATION.md` — 상세 절차와 예제
 - `docs/openapi.yaml` — API 스펙
 - `docs/ARCHITECTURE.md`, `docs/CORE_DESIGN.md` — 설계 배경
+
+## 9. MCP 도구 (에이전트가 직접 호출)
+
+`tools/mcp/licensehub-mcp.js`를 MCP 서버로 등록하면 다음 도구를 쓸 수 있다.
+OpenCode에서는 `<서버>_<도구>` 이름으로 노출된다(서버 이름이 `licensehub`이면 `licensehub_create_license`).
+
+- `generate_keypair` — App 키쌍(Ed25519) 생성
+- `public_key` — 발급 서버 공개키 조회
+- `list_licenses` — 라이선스 목록
+- `create_license` — 라이선스 생성
+- `issue_license` — 인증서 발급 + 암호화 라이선스 생성
+- `download_license` — 암호화 라이선스 조회/파일 저장
+- `verify_license` — 서버 기준 라이선스 상태 확인
+
+설정 예시(OpenCode V2 `mcp.servers`, Claude Desktop `mcpServers`)는 `tools/mcp/README.md`에 있다.
