@@ -404,15 +404,18 @@ if (st == LH_VALID && lib != NULL) {
             <tr><th>필드</th><th>의미</th></tr>
           </thead>
           <tbody>
-            <tr><td className="mono">product_id / version</td><td>발급 대상 제품과 버전</td></tr>
-            <tr><td className="mono">executable_name</td><td>실행 파일 이름 (격리 검증용)</td></tr>
-            <tr><td className="mono">host_module</td><td>핵심 로직이 있는 호스트 모듈 경로</td></tr>
-            <tr><td className="mono">server_status</td><td>서버 연결 상태 (온라인 등급일 때 필수)</td></tr>
+            <tr><td className="mono">now</td><td>검증 시각 (RFC 3339 UTC)</td></tr>
+            <tr><td className="mono">product / version</td><td>발급 대상 제품과 버전</td></tr>
+            <tr><td className="mono">product_id</td><td>프로젝트 고유값 (앱 단위 바인딩)</td></tr>
+            <tr><td className="mono">executable_name</td><td>실행 파일 이름 (앱 단위 바인딩)</td></tr>
+            <tr><td className="mono">application_id</td><td>응용 공개키에서 파생한 애플리케이션 식별자</td></tr>
+            <tr><td className="mono">target_language</td><td>대상 언어 (인증서에 서명된 값과 대조)</td></tr>
+            <tr><td className="mono">server_status</td><td>서버 검증 결과 (온라인 등급일 때)</td></tr>
           </tbody>
         </table>
         <p>
           응용 프로그램은 각 플랫폼에 맞는 값을 채워 넣습니다.
-          데스크톱에서는 실행 파일 이름과 호스트 모듈 경로를, 모바일에서는 번들 식별자를 사용합니다.
+          데스크톱에서는 실행 파일 이름을, 모바일에서는 번들 식별자를 사용합니다.
         </p>
 
         <h3 id="integrate-flow">7.3 붙이는 흐름</h3>

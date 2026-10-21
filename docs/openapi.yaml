@@ -1,0 +1,351 @@
+openapi: 3.1.0
+info:
+  title: LicenseHub API
+  version: "0.1.0"
+  description: |
+    LicenseHub 라이선스 발급·검증 API.
+    응용 프로그램 통합 절차는 AGENTS.md 와 docs/INTEGRATION.md 를 참고한다.
+    인증은 로그인 응답의 토큰을 `Authorization: Bearer <token>` 로 전달한다.
+servers:
+  - url: https://licensehub.example.com
+    description: 배포 환경 (예시)
+tags:
+  - name: auth
+  - name: licenses
+  - name: verify
+  - name: meta
+
+paths:
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: 로그인
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: 로그인 성공
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/public-key:
+    get:
+      tags: [meta]
+      summary: 발급 서버(Ed25519) 공개키 조회
+      responses:
+        "200":
+          description: 공개키
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicKey" }
+
+  /api/licenses:
+    get:
+      tags: [licenses]
+      summary: 라이선스 목록
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: 라이선스 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/License" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [licenses]
+      summary: 라이선스 생성
+      description: |
+        `application_public_key` 를 생략하면 서버가 Ed25519 키쌍을 만들고,
+        응답에 `application_private_key`(PKCS8 PEM)를 한 번만 포함한다.
+        `level=1` 은 `verification_url` 을 넣지 않고, `level=2` 는 필수다.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LicenseInput" }
+      responses:
+        "200":
+          description: 생성된 라이선스
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/License" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/licenses/{id}/issue:
+    post:
+      tags: [licenses]
+      summary: 인증서 발급 + 암호화 라이선스 생성
+      description: |
+        경로의 `id` 는 라이선스의 숫자 DB id 이다(문자열 `license_id` 와 다르다).
+        응답의 `encrypted_license` 가 응용 프로그램에 배포할 라이선스 파일 본문이다.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LicenseIdPath"
+      responses:
+        "200":
+          description: 발급 결과
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IssueResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/licenses/{id}/license:
+    get:
+      tags: [licenses]
+      summary: 암호화 라이선스(JSON) 조회
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LicenseIdPath"
+      responses:
+        "200":
+          description: 암호화 라이선스 엔벨로프
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/licenses/{id}/license/download:
+    get:
+      tags: [licenses]
+      summary: 암호화 라이선스 파일 내려받기
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LicenseIdPath"
+      responses:
+        "200":
+          description: 라이선스 파일
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/licenses/{id}/status:
+    post:
+      tags: [licenses]
+      summary: 라이선스 상태 변경
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LicenseIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, revoked, blacklisted]
+      responses:
+        "200":
+          description: 변경 결과
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/License" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/verify:
+    post:
+      tags: [verify]
+      summary: L2 서버 간 라이선스 상태 확인
+      description: |
+        L2 인증서의 `server.verification_url` 로 호출된다.
+        응용 프로그램이 직접 호출하지 않고, LicenseGuard 코어가 내부에서 호출한다.
+        인증은 `x-licensehub-key` 고정 헤더로 한다.
+      parameters:
+        - in: header
+          name: x-licensehub-key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [license_id]
+              properties:
+                license_id: { type: string }
+      responses:
+        "200":
+          description: 승인/거부
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyResponse" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    LicenseIdPath:
+      in: path
+      name: id
+      required: true
+      description: 라이선스의 숫자 DB id
+      schema: { type: integer, format: int64 }
+
+  responses:
+    BadRequest:
+      description: 잘못된 요청
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: 인증 실패
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: 대상 없음
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        role: { type: string }
+        created_at: { type: string }
+
+    LoginResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+
+    PublicKey:
+      type: object
+      properties:
+        key_id: { type: string }
+        algorithm: { type: string, examples: [Ed25519] }
+        hex: { type: string }
+        pem: { type: string }
+
+    LicenseInput:
+      type: object
+      required: [product, version, level, holder, expires_at]
+      properties:
+        license_id:
+          type: string
+          description: 비우면 서버가 자동 생성
+        product: { type: string }
+        version: { type: string }
+        level:
+          type: integer
+          enum: [1, 2]
+          description: "1=오프라인, 2=온라인"
+        holder: { type: string }
+        expires_at:
+          type: string
+          description: RFC 3339 UTC
+          examples: ["2027-01-01T00:00:00Z"]
+        status:
+          type: string
+          enum: [active, revoked, blacklisted]
+        target_language: { type: string }
+        application_public_key:
+          type: string
+          description: Ed25519 공개키 SPKI PEM. 생략하면 서버가 생성.
+        verification_url:
+          type: string
+          description: L2 필수, L1 금지. http(s) URL.
+        metadata: { type: string }
+
+    License:
+      type: object
+      properties:
+        id: { type: integer }
+        license_id: { type: string }
+        product: { type: string }
+        version: { type: string }
+        level: { type: integer }
+        holder: { type: string }
+        expires_at: { type: string }
+        status: { type: string }
+        metadata: { type: [string, "null"] }
+        target_language: { type: [string, "null"] }
+        application_public_key: { type: [string, "null"] }
+        application_id: { type: [string, "null"] }
+        verification_url: { type: [string, "null"] }
+        created_at: { type: string }
+        certificates: { type: integer }
+        encrypted_license:
+          type: [object, "null"]
+          description: 발급 완료 시 암호화 라이선스 정보
+        application_private_key:
+          type: string
+          description: |
+            서버가 키쌍을 생성한 경우에만, 이 응답에서 한 번만 반환된다.
+
+    IssueResponse:
+      type: object
+      properties:
+        certificate: { type: object }
+        certificate_id: { type: string }
+        encrypted_license: { type: object }
+        application_id: { type: string }
+        target_language: { type: string }
+        application_key_generated: { type: boolean }
+        application_private_key:
+          type: [string, "null"]
+          description: 이 발급 시점에 키를 생성한 경우에만(한 번만) 반환된다.
+
+    VerifyResponse:
+      type: object
+      properties:
+        license_id: { type: string }
+        status:
+          type: string
+          enum: [approved, rejected]
+        reason:
+          type: string
+          description: rejected 일 때의 사유 (expired, blacklisted 등)
