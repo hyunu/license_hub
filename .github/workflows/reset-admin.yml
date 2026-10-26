@@ -1,0 +1,117 @@
+name: Reset Admin Password
+
+# 시크릿 LICENSEHUB_ADMIN_PASSWORD 의 현재 값으로 admin 비밀번호를 재설정한다.
+# seed_admin 은 users 테이블이 비어 있을 때만 동작하므로, 기존 admin 해시를
+# 직접 Argon2id 로 갱신한다.
+#
+# 사용: Actions → Reset Admin Password → Run workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: 'Admin username'
+        required: true
+        default: 'admin'
+
+permissions:
+  contents: read
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Argon2id hash
+        env:
+          ADMIN_PASSWORD: ${{ secrets.LICENSEHUB_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "${ADMIN_PASSWORD:-}" ] || { echo "LICENSEHUB_ADMIN_PASSWORD secret is empty"; exit 1; }
+          python3 -m pip install --quiet argon2-cffi
+          HASH=$(python3 - <<'PY'
+          import os
+          from argon2 import PasswordHasher
+          # core(auth.rs)의 Argon2::default() 와 동일한 파라미터
+          ph = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
+          print(ph.hash(os.environ["ADMIN_PASSWORD"]))
+          PY
+          )
+          echo "::add-mask::$HASH"
+          echo "ADMIN_HASH_B64=$(printf '%s' "$HASH" | base64 -w0)" >> "$GITHUB_ENV"
+          echo "hash generated"
+
+      - name: Update admin password in database
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          ADMIN_USER: ${{ github.event.inputs.username }}
+          ADMIN_HASH_B64: ${{ env.ADMIN_HASH_B64 }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: ADMIN_USER,ADMIN_HASH_B64
+          script: |
+            set -euo pipefail
+            HASH=$(printf '%s' "$ADMIN_HASH_B64" | base64 -d)
+
+            command -v python3 >/dev/null 2>&1 || {
+              sudo apt-get update -y
+              sudo apt-get install -y python3
+            }
+
+            DB_ENV=$(sudo sed -n 's/^LICENSEHUB_DB=//p' /opt/licensehub/.env 2>/dev/null | tail -1 || true)
+            DB_PATH="${DB_ENV:-data/licensehub.db}"
+            case "$DB_PATH" in
+              /*) ;;
+              *) DB_PATH="/opt/licensehub/$DB_PATH" ;;
+            esac
+            echo "database: $DB_PATH"
+            sudo test -f "$DB_PATH" || { echo "database not found: $DB_PATH"; exit 1; }
+
+            sudo python3 - "$DB_PATH" "$ADMIN_USER" "$HASH" <<'PY'
+            import sqlite3
+            import sys
+            from datetime import datetime, timezone
+
+            db, user, pw_hash = sys.argv[1], sys.argv[2], sys.argv[3]
+            conn = sqlite3.connect(db, timeout=10)
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM users WHERE username = ?", (user,))
+            row = cur.fetchone()
+            if row:
+                cur.execute("UPDATE users SET password_hash = ? WHERE username = ?", (pw_hash, user))
+                cur.execute("DELETE FROM sessions WHERE user_id = ?", (row[0],))
+                action = "updated"
+            else:
+                created = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                cur.execute(
+                    "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)",
+                    (user, pw_hash, created),
+                )
+                action = "inserted"
+            conn.commit()
+            conn.close()
+            print(f"admin '{user}' {action}")
+            PY
+
+      - name: Verify login
+        env:
+          ADMIN_PASSWORD: ${{ secrets.LICENSEHUB_ADMIN_PASSWORD }}
+          ADMIN_USER: ${{ github.event.inputs.username }}
+        run: |
+          set -euo pipefail
+          BASE="${{ vars.API_BASE_URL }}"
+          BODY=$(jq -n --arg u "$ADMIN_USER" --arg p "$ADMIN_PASSWORD" '{username:$u,password:$p}')
+          CODE=$(curl -sS -o /tmp/login.json -w '%{http_code}' \
+            -X POST "$BASE/api/auth/login" \
+            -H 'content-type: application/json' \
+            -d "$BODY")
+          echo "login status: $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "login failed:"
+            cat /tmp/login.json
+            exit 1
+          fi
+          jq -e '.token' /tmp/login.json >/dev/null
+          echo "LOGIN OK"
