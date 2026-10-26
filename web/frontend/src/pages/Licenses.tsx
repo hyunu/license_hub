@@ -300,15 +300,15 @@ export function Licenses() {
             )}
             {licenses.map((l) => (
               <tr key={l.id}>
-                <td className="mono">{l.license_id}</td>
-                <td>{l.product} <span className="muted">{l.version}</span></td>
+                <td className="mono" data-tip={l.license_id}>{l.license_id}</td>
+                <td data-tip={`${l.product} ${l.version}`}>{l.product} <span className="muted">{l.version}</span></td>
                 <td>L{l.level}</td>
-                <td className="mono small">{l.target_language ?? '—'}</td>
-                <td className="mono small" title={l.application_id ?? undefined}>
+                <td className="mono small" data-tip={l.target_language ?? undefined}>{l.target_language ?? '—'}</td>
+                <td className="mono small" data-tip={l.application_id ?? undefined}>
                   {l.application_id ? `${l.application_id.slice(0, 12)}…` : <span className="muted">미등록</span>}
                 </td>
-                <td>{l.holder}</td>
-                <td className="mono">{l.expires_at.slice(0, 10)}</td>
+                <td data-tip={l.holder}>{l.holder}</td>
+                <td className="mono" data-tip={l.expires_at}>{l.expires_at.slice(0, 10)}</td>
                 <td><span className={`status ${l.status}`}><span className="sq" />{l.status}</span></td>
                 <td className="mono muted">
                   {l.encrypted_license ? (

@@ -184,6 +184,27 @@ a { color: inherit; }
 .ledger .actions { white-space: nowrap; }
 .ledger .actions .btn + .btn { margin-left: 6px; }
 
+/* 잘린 셀의 전체 값을 hover 시 표시 */
+.ledger td[data-tip] { position: relative; cursor: help; }
+.ledger td[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  top: calc(100% - 2px);
+  z-index: 40;
+  max-width: min(460px, 80vw);
+  padding: 6px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: var(--ink);
+  color: var(--paper);
+  font: 11px/1.45 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-all;
+  pointer-events: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
 /* ---------- 상태 표식 (사각) ---------- */
 .status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; }
 .status .sq { width: 8px; height: 8px; display: inline-block; background: var(--line-strong); }
