@@ -300,6 +300,11 @@ export function Guide() {
           </tbody>
         </table>
 
+        <p>
+          만료일이 다가오면 라이선스 목록의 <strong>만료 연장</strong>으로 만료일을 갱신한 뒤 재발급합니다.
+          <strong>발급</strong>만으로는 인증서가 새로 만들어질 뿐 만료일은 연장되지 않습니다.
+        </p>
+
         {/* 5. 검증 절차 */}
         <h2 id="verify">5. 응용 프로그램이 확인하는 것</h2>
         <p>

@@ -139,6 +139,22 @@ function demoLicenseId(): string {
   return `${s.slice(0, 4)}-${s.slice(4)}`
 }
 
+export function demoUpdateLicense(id: number, expiresAt: string): License | undefined {
+  const lic = demoLicenses.find((l) => l.id === id)
+  if (!lic) return undefined
+  const old = lic.expires_at
+  lic.expires_at = expiresAt
+  demoAudit.unshift({
+    id: seq + 3000,
+    actor: 'admin',
+    action: 'license.update',
+    target: lic.license_id,
+    detail: `expires_at ${old} -> ${expiresAt}`,
+    created_at: now(),
+  })
+  return lic
+}
+
 export function demoIssueCertificate(id: number): {
   certificate: Record<string, unknown>
   certificate_id: string

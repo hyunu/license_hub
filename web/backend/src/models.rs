@@ -94,6 +94,13 @@ pub struct LicenseInput {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct LicenseUpdate {
+    /// 새 만료 시각 (RFC 3339 UTC). 만료 연장에 사용한다.
+    #[serde(default)]
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct UserInput {
     pub username: String,
     pub password: String,

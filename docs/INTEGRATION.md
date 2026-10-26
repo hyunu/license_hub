@@ -158,6 +158,27 @@ curl -sS "$LICENSEHUB_URL/api/licenses/7/license/download" \
   -H "Authorization: Bearer $TOKEN" -o license.lic.json
 ```
 
+### 2.6 만료 연장(재발급)
+
+`발급`(issue)은 인증서를 새로 만들 뿐 만료일은 바꾸지 않는다.
+만료가 다가오면 라이선스의 `expires_at`을 먼저 갱신하고 다시 발급한다.
+
+```sh
+# 1) 만료일 갱신 (admin)
+curl -sS -X PATCH "$LICENSEHUB_URL/api/licenses/7" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"expires_at":"2029-12-31T23:59:59Z"}'
+
+# 2) 같은 license_id 로 재발급
+curl -sS -X POST "$LICENSEHUB_URL/api/licenses/7/issue" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+- 만료일은 RFC 3339 UTC이며 현재 시각보다 미래여야 한다.
+- `license_id`는 유지되므로 앱의 라이선스 정체성이 바뀌지 않는다.
+- 웹 UI에서는 라이선스 목록의 **만료 연장** 버튼이 이 두 단계를 수행한다.
+
 ## 3. 키 형식과 변환 (흔한 실수)
 
 | 항목 | HTTP API | C ABI |

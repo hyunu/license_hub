@@ -11,6 +11,7 @@ use pkcs8::{DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::auth::{
     create_session, hash_password, now_rfc3339, user_by_token, user_by_username, verify_password,
@@ -559,6 +560,82 @@ pub async fn license_status(
         Some(status),
     );
     Ok(Json(json!({ "ok": true, "id": id, "status": status })))
+}
+
+/// 라이선스의 만료일을 연장한다 (admin 전용).
+///
+/// 발급(issue)은 인증서를 새로 만들 뿐 만료일은 바꾸지 않는다. 만료가
+/// 다가올 때 이 엔드포인트로 expires_at 을 갱신한 뒤 issue 를 호출하면
+/// 같은 license_id 를 유지한 채 새 만료일의 인증서를 재발급할 수 있다.
+pub async fn update_license(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(body): Json<LicenseUpdate>,
+) -> Result<Json<Value>, ApiError> {
+    let actor = auth_user(&state, &headers)?;
+    require_admin(&actor)?;
+
+    let expires_at = body
+        .expires_at
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| bad_request("expires_at is required"))?
+        .to_string();
+
+    let parsed = OffsetDateTime::parse(&expires_at, &Rfc3339).map_err(|_| {
+        bad_request("expires_at must be RFC 3339 (UTC), e.g. 2027-12-31T23:59:59Z")
+    })?;
+    if parsed <= OffsetDateTime::now_utc() {
+        return Err(bad_request("expires_at must be in the future"));
+    }
+
+    let current: License = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            &format!("{LICENSE_SELECT} WHERE id = ?1"),
+            params![id],
+            map_license,
+        )
+        .optional()
+        .map_err(|e| internal(&e.to_string()))?
+        .ok_or_else(|| not_found("license not found"))?
+    };
+
+    {
+        let db = state.db.lock().unwrap();
+        db.execute(
+            "UPDATE licenses SET expires_at = ?2 WHERE id = ?1",
+            params![id, expires_at],
+        )
+        .map_err(|e| internal(&e.to_string()))?;
+    }
+
+    log_audit(
+        &state,
+        &actor.username,
+        "license.update",
+        Some(&current.license_id),
+        Some(&format!(
+            "expires_at {} -> {}",
+            current.expires_at, expires_at
+        )),
+    );
+
+    let updated: License = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            &format!("{LICENSE_SELECT} WHERE id = ?1"),
+            params![id],
+            map_license,
+        )
+        .map_err(|e| internal(&e.to_string()))?
+    };
+
+    Ok(Json(
+        serde_json::to_value(&updated).map_err(|e| internal(&e.to_string()))?,
+    ))
 }
 
 /// 라이선스를 서버에서 삭제한다 (admin 전용).

@@ -132,6 +132,31 @@ export function Licenses() {
     }
   }
 
+  // 만료일을 연장하고 같은 license_id로 재발급한다 (admin).
+  const renew = async (lic: License) => {
+    const current = lic.expires_at.slice(0, 10)
+    const input = window.prompt(`새 만료일 (YYYY-MM-DD)\n현재: ${current}`, current)
+    if (!input) return
+    const day = input.trim()
+    const newExpires = toEndOfDayRfc3339(day)
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(newExpires)) {
+      bad('날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)')
+      return
+    }
+    if (!window.confirm(`${lic.license_id} 만료일을 ${day}까지 연장하고 재발급할까요?`)) return
+    try {
+      await api.updateLicense(lic.id, { expires_at: newExpires })
+      const res = await api.issue(lic.id)
+      if (typeof res.application_private_key === 'string') {
+        setKeyReveal({ license: lic.license_id, privatePem: res.application_private_key })
+      }
+      ok(`만료 연장 + 재발급됨 — ${lic.license_id}.lic.json`)
+      load(filter)
+    } catch (err) {
+      bad(err instanceof Error ? err.message : 'renew failed')
+    }
+  }
+
 // 최종 산출물인 암호화된 라이선스 파일을 내려받는다.
   const downloadLic = async (lic: License) => {
     if (!lic.encrypted_license) {
@@ -297,6 +322,10 @@ export function Licenses() {
                 <td className="actions">
                   <button className="btn small primary" onClick={() => issue(l)}
                     title="암호화된 라이선스 파일을 만듭니다">발급</button>
+                  {isAdmin && (
+                    <button className="btn small" onClick={() => renew(l)}
+                      title="만료일을 연장하고 인증서를 재발급합니다">만료 연장</button>
+                  )}
                   <button className="btn small" onClick={() => downloadLic(l)} disabled={!l.encrypted_license}
                     title={l.encrypted_license
                       ? `${l.license_id}.lic.json 내려받기`

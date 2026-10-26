@@ -1,4 +1,4 @@
-import { demoAddBlacklist, demoAudit, demoBlacklist, demoCreateLicense, demoCreateUser, demoDeleteLicense, demoDeleteUser, demoEncryptedLicense, demoIssueCertificate, demoLicenses, demoLicensesByStatus, demoPublicKey, demoRemoveBlacklist, demoSetStatus, demoStats, demoUpdateUser, demoUsers } from './demo'
+import { demoAddBlacklist, demoAudit, demoBlacklist, demoCreateLicense, demoCreateUser, demoDeleteLicense, demoDeleteUser, demoEncryptedLicense, demoIssueCertificate, demoLicenses, demoLicensesByStatus, demoPublicKey, demoRemoveBlacklist, demoSetStatus, demoStats, demoUpdateLicense, demoUpdateUser, demoUsers } from './demo'
 
 export interface User {
   id: number
@@ -104,6 +104,10 @@ function demoRoute<T>(path: string, options: RequestInit): Promise<T> {
     demoSetStatus(Number(basePath.split('/')[3]), String(body?.status ?? 'active'))
     return Promise.resolve({ ok: true } as T)
   }
+  if (basePath.startsWith('/api/licenses/') && method === 'PATCH') {
+    const updated = demoUpdateLicense(Number(basePath.split('/')[3]), String(body?.expires_at ?? ''))
+    return Promise.resolve((updated ?? { ok: false }) as T)
+  }
 
   if (basePath === '/api/users' && method === 'GET') return Promise.resolve(demoUsers as T)
   if (basePath === '/api/users' && method === 'POST') {
@@ -208,6 +212,10 @@ export const api = {
     }>(`/api/licenses/${id}/issue`, { method: 'POST' }),
   setStatus: (id: number, status: string) =>
     request<{ ok: boolean }>(`/api/licenses/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  // 만료일 연장(admin). 같은 license_id 를 유지한 채 expires_at 만 갱신한다.
+  // 이어서 issue 를 호출하면 새 만료일의 인증서가 재발급된다.
+  updateLicense: (id: number, body: { expires_at: string }) =>
+    request<License>(`/api/licenses/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   // 서버에서 라이선스와 발급된 인증서·블랙리스트를 함께 삭제한다 (admin 전용).
   deleteLicense: (id: number) =>
     request<{ ok: boolean }>(`/api/licenses/${id}`, { method: 'DELETE' }),
