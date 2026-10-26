@@ -92,8 +92,7 @@ fn main() {
         .route("/api/licenses/{id}/status", post(routes::license_status))
         .route(
             "/api/licenses/{id}",
-            axum::routing::patch(routes::update_license)
-                .delete(routes::delete_license),
+            axum::routing::patch(routes::update_license).delete(routes::delete_license),
         )
         .route(
             "/api/users",

@@ -584,9 +584,8 @@ pub async fn update_license(
         .ok_or_else(|| bad_request("expires_at is required"))?
         .to_string();
 
-    let parsed = OffsetDateTime::parse(&expires_at, &Rfc3339).map_err(|_| {
-        bad_request("expires_at must be RFC 3339 (UTC), e.g. 2027-12-31T23:59:59Z")
-    })?;
+    let parsed = OffsetDateTime::parse(&expires_at, &Rfc3339)
+        .map_err(|_| bad_request("expires_at must be RFC 3339 (UTC), e.g. 2027-12-31T23:59:59Z"))?;
     if parsed <= OffsetDateTime::now_utc() {
         return Err(bad_request("expires_at must be in the future"));
     }
